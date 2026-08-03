@@ -1,0 +1,172 @@
+# Home Assistant Configuration for Demo Mode with Custom Virtual Entities
+
+# Enables default dashboards, history, logbook, frontend, mobile app, etc.
+default_config:
+
+# Habilita la API
+api:
+
+homeassistant:
+
+  auth_providers:
+    - type: trusted_networks
+      trusted_networks:
+        - 127.0.0.1
+        - 172.17.0.0/16
+        - 172.17.0.1
+        - 192.168.0.0/16
+      allow_bypass_login: true
+    - type: homeassistant
+
+# Permite peticiones a /api/ usando una clave simple configurada por ti
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - 172.17.0.0/16
+    - 172.17.0.1
+    - ::1
+# Enable the built-in demo integration (adds preconfigured dummy lights, climate, locks, cameras, etc.)
+demo:
+
+# Custom Virtual Entities (Input Helpers) for testing
+input_boolean:
+  cook_power_switch:
+    name: "Olla Power Switch"
+    icon: mdi:power
+  coffee_maker_power_switch:
+    name: "Cafetera Power Switch"
+    icon: mdi:power
+  living_room_light:
+    name: "Luz de la salas"
+    icon: mdi:lightbulb
+  kitchen_light:
+    name: "Luz de la cocina"
+    icon: mdi:lightbulb
+  bedroom_light:
+    name: "Luz del cuarto"
+    icon: mdi:lightbulb
+  heater_switch:
+    name: "Interruptor de Calefacción"
+    icon: mdi:radiator
+  smart_lock_state:
+    name: "Estado de Llavín Inteligente"
+    icon: mdi:lock-smart
+  front_door_switch:
+    name: "Estado Puerta Principal"
+    icon: mdi:door
+  back_door_switch:
+    name: "Estado Puerta Trasera"
+    icon: mdi:door
+  garage_door_switch:
+    name: "Estado Puerta Garaje"
+    icon: mdi:garage
+
+input_number:
+  power_level:
+    name: "Consumo electrico"
+    initial: 50
+    min: 0
+    max: 100
+    step: 1
+    mode: slider
+    icon: mdi:gauge
+  room_temperature_input:
+    name: "Temperatura Ambiente Simulada"
+    initial: 20.5
+    min: 10
+    max: 35
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: slider
+    icon: mdi:thermometer-lines
+
+input_select:
+  hvac_mode:
+    name: "Modo de seguridad"
+    options:
+      - "Normal"
+      - "Eco"
+      - "Avanzado"
+    initial: "Normal"
+    icon: mdi:shield-sync
+
+input_text:
+  system_status_text:
+    name: "Sistema de seguridad"
+    initial: "Sistema Operativo"
+    icon: mdi:text-short
+
+# Reactive template entities to test state dependencies
+template:
+  - sensor:
+      - name: "Consumo de la Olla"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        unique_id: main_power_meter_001
+        state: >
+          {% if is_state('input_boolean.cook_power_switch', 'on') %}
+            {{ (10.5 + states('input_number.power_level') | float(default=0) * 1.5) | round(1) }}
+          {% else %}
+            0.0
+          {% endif %}
+      - name: "Temperatura del Hogar"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        unique_id: home_temperature_sensor_001
+        icon: mdi:thermometer
+        state: >
+          {{ states('input_number.room_temperature_input') | float(default=20.5) }}
+      - name: "Estado del Sistema"
+        unique_id: hvac_operating_state_001
+        icon: mdi:cog-play
+        state: >
+          {% if is_state('input_boolean.living_room_light', 'on') %}
+            {{ states('input_select.hvac_mode') }} - Active
+          {% else %}
+            Standby
+          {% endif %}
+  - binary_sensor:
+      - name: "Sensor Puerta Principal"
+        device_class: door
+        unique_id: front_door_binary_sensor_001
+        state: "{{ is_state('input_boolean.front_door_switch', 'on') }}"
+      - name: "Sensor Puerta Trasera"
+        device_class: door
+        unique_id: back_door_binary_sensor_001
+        state: "{{ is_state('input_boolean.back_door_switch', 'on') }}"
+      - name: "Sensor Puerta Garaje"
+        device_class: door
+        unique_id: garage_door_binary_sensor_001
+        state: "{{ is_state('input_boolean.garage_door_switch', 'on') }}"
+  - lock:
+      - name: "Llavín Inteligente"
+        unique_id: smart_lock_main_door_001
+        value_template: "{{ is_state('input_boolean.smart_lock_state', 'on') }}"
+        lock:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.smart_lock_state
+        unlock:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.smart_lock_state
+
+# Thermostat (Climate Control) for Home Temperature
+climate:
+  - platform: generic_thermostat
+    name: "Termostato del Hogar"
+    heater: input_boolean.heater_switch
+    target_sensor: sensor.temperatura_del_hogar
+    min_temp: 15
+    max_temp: 30
+    target_temp: 22
+    ac_mode: false
+    cold_tolerance: 0.3
+    hot_tolerance: 0.3
+    initial_hvac_mode: "heat"
+
+
+

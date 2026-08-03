@@ -1,0 +1,164 @@
+[
+    {
+        "id": "CMD_001",
+        "type": "Simple Direct",
+        "prompt": "Enciende la luz de la cocina.",
+        "expected_device": "input_boolean.kitchen_light",
+        "expected_action": "turn_on",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_002",
+        "type": "Simple Direct",
+        "prompt": "Bloquea el llavín inteligente.",
+        "expected_device": "lock.llavin_inteligente",
+        "expected_action": "lock",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_003",
+        "type": "Simple Direct",
+        "prompt": "Apaga la cafetera.",
+        "expected_device": "input_boolean.coffee_maker_power_switch",
+        "expected_action": "turn_off",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_004",
+        "type": "Parameter Extraction",
+        "prompt": "Pon el termostato del hogar a 21 grados.",
+        "expected_device": "climate.termostato_del_hogar",
+        "expected_action": "set_value",
+        "expected_parameter": 21,
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_005",
+        "type": "Parameter Extraction",
+        "prompt": "Apaga la luz del cuarto.",
+        "expected_device": "input_boolean.bedroom_light",
+        "expected_action": "turn_off",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_006",
+        "type": "Implicit / Synonym",
+        "prompt": "Está muy oscuro en el cuarto, dame luz.",
+        "expected_device": "input_boolean.bedroom_light",
+        "expected_action": "turn_on",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_007",
+        "type": "Implicit / Synonym",
+        "prompt": "Abre el llavín inteligente.",
+        "expected_device": "lock.llavin_inteligente",
+        "expected_action": "unlock",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_008",
+        "type": "Implicit / Synonym",
+        "prompt": "Tengo mucho frío en la casa, ajusta el termostato.",
+        "expected_device": "climate.termostato_del_hogar",
+        "expected_action": "turn_on",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_009",
+        "type": "Invalid / Non-existent Device",
+        "prompt": "Haz que la habitación huela a lavanda.",
+        "expected_device": "null",
+        "expected_action": "null",
+        "expected_parameter": "null",
+        "expected_status": "failure"
+    },
+    {
+        "id": "CMD_010",
+        "type": "Invalid / Non-existent Device",
+        "prompt": "Enciende la televisión de la sala.",
+        "expected_device": "null",
+        "expected_action": "null",
+        "expected_parameter": "null",
+        "expected_status": "failure"
+    },
+    {
+        "id": "CMD_011",
+        "type": "Out of Domain Query",
+        "prompt": "¿Qué hora es en Tokio?",
+        "expected_device": "null",
+        "expected_action": "null",
+        "expected_parameter": "null",
+        "expected_status": "failure"
+    },
+    {
+        "id": "CMD_012",
+        "type": "Ambiguous / Multi-device",
+        "prompt": "Apaga las luces.",
+        "expected_device": "null",
+        "expected_action": "null",
+        "expected_parameter": "null",
+        "expected_status": "failure"
+    },
+    {
+        "id": "CMD_013",
+        "type": "Ambiguous / Incomplete",
+        "prompt": "Enciende la luz.",
+        "expected_device": "null",
+        "expected_action": "null",
+        "expected_parameter": "null",
+        "expected_status": "failure"
+    },
+    {
+        "id": "CMD_014",
+        "type": "Composite Command",
+        "prompt": "Quiero encender la cafetera y la luz de la cocina.",
+        "expected_device": "multiple",
+        "expected_action": "multiple",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_015",
+        "type": "Informal / Syntax Noise",
+        "prompt": "PRENDER LUZ COCINA YA",
+        "expected_device": "input_boolean.kitchen_light",
+        "expected_action": "turn_on",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_016",
+        "type": "State Query",
+        "prompt": "¿Está abierta la puerta principal?",
+        "expected_device": "binary_sensor.sensor_puerta_principal",
+        "expected_action": "get_state",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_017",
+        "type": "Simple Direct",
+        "prompt": "Enciende la olla eléctrica.",
+        "expected_device": "input_boolean.cook_power_switch",
+        "expected_action": "turn_on",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_018",
+        "type": "State Query",
+        "prompt": "¿Cuál es la temperatura del hogar?",
+        "expected_device": "sensor.temperatura_del_hogar",
+        "expected_action": "get_state",
+        "expected_parameter": "null",
+        "expected_status": "success"
+    }
+]

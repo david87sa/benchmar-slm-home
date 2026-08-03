@@ -1,0 +1,108 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "turn_on_device",
+            "description": "Enciende un dispositivo domótico.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID de la entidad. Ejemplo: input_boolean.kitchen_light"
+                    }
+                },
+                "required": ["device_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "turn_off_device",
+            "description": "Apaga un dispositivo domótico.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID de la entidad. Ejemplo: input_boolean.bedroom_light"
+                    }
+                },
+                "required": ["device_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "lock_device",
+            "description": "Bloquea el llavín inteligente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID de la cerradura. Ejemplo: lock.llavin_inteligente"
+                    }
+                },
+                "required": ["device_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "unlock_device",
+            "description": "Desbloquea el llavín inteligente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID de la cerradura. Ejemplo: lock.llavin_inteligente"
+                    }
+                },
+                "required": ["device_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_temperature",
+            "description": "Ajusta la temperatura del termostato.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID del termostato. Ejemplo: climate.termostato_del_hogar"
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Temperatura en grados Celsius. Ejemplo: 21"
+                    }
+                },
+                "required": ["device_id", "temperature"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_device_state",
+            "description": "Consulta el estado de una entidad.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "ID de la entidad. Ejemplo: binary_sensor.sensor_puerta_principal"
+                    }
+                },
+                "required": ["device_id"]
+            }
+        }
+    }
+]
