@@ -6,13 +6,14 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
 ## Main Components
 
 ### 1. Benchmark script
-- File: [bench-function-calling.py](bench-function-calling.py)
+- File: [benchmark.py](benchmark.py)
 - Runs the end-to-end benchmark loop.
 - Supports:
   - model selection via CLI argument or environment variable
   - device-name selection via CLI argument or auto-detection
   - configuration loading from [data/config.json](data/config.json)
   - Home Assistant execution and validation
+  - configurable logging via --log-level
 
 ### 2. Home Assistant validation helper
 - File: [check_ha_states.py](check_ha_states.py)
@@ -32,8 +33,20 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
   - MQTT broker address
   - MQTT topic for power data
   - Home Assistant API key
+  - log level (see Logging below)
 
-### 5. Data files
+### 5. Logging
+- File: [logger.py](logger.py)
+- Centralized logging configuration supporting INFO and DEBUG levels (plus WARNING, ERROR, CRITICAL).
+- Log level can be configured via (highest priority first):
+  1. CLI argument --log-level (available on benchmark.py, check_ha_states.py, monitor_gpu.py, and server/run_demo.py)
+  2. Environment variable LOG_LEVEL
+  3. data/config.json log_level key
+  4. Default: INFO
+- Log output goes to stderr (keeping stdout clean for structured/JSON output).
+- Format: YYYY-MM-DD HH:MM:SS [LEVEL] [module] message
+
+### 6. Data files
 - Directory: [data](data)
 - Contains:
   - test prompts
@@ -41,7 +54,7 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
   - tool definitions
   - Home Assistant token file
 
-### 6. Demo/server assets
+### 7. Demo/server assets
 - Directory: [server](server)
 - Includes demo setup scripts and Home Assistant configuration examples.
 
@@ -56,17 +69,18 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
 ## Usage
 Run the benchmark with:
 
-```bash
-python bench-function-calling.py --model qwen2.5:3b
-```
+    python benchmark.py --model qwen2.5:3b
 
 Or with a custom device label:
 
-```bash
-python bench-function-calling.py --model qwen2.5:3b --device-name my-laptop
-```
+    python benchmark.py --model qwen2.5:3b --device-name my-laptop
+
+Enable debug logging to see detailed execution information:
+
+    python benchmark.py --model qwen2.5:3b --log-level debug
 
 ## Notes
 - The project expects a running Ollama instance and a reachable Home Assistant instance.
 - MQTT support is used for collecting power data during benchmarking.
 - Authentication for Home Assistant can come from the configured API key or a token file.
+- Logging can be tuned via --log-level, LOG_LEVEL env var, or config.json.

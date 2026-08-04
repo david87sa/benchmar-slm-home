@@ -24,6 +24,9 @@ import paho.mqtt.client as mqtt
 
 from check_ha_states import get_ha_headers, validate_single_element
 from device_info import get_device_name
+from logger import configure_logging, get_logger
+
+logger = get_logger(__name__)
 
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -64,12 +67,12 @@ def start_mqtt_listener():
     client = mqtt.Client()
     client.on_message = on_mqtt_message
     try:
-        print(f"[MQTT] Conectando a {MQTT_BROKER}:{MQTT_PORT} topic={MQTT_TOPIC_POWER}")
+        logger.debug("MQTT conectando a %s:%s topic=%s", MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_POWER)
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.subscribe(MQTT_TOPIC_POWER)
         client.loop_start()
     except Exception as exc:
-        print(f"[ADVERTENCIA] MQTT no disponible: {exc}")
+        logger.warning("MQTT no disponible: %s", exc)
 
 
 # --- System metrics ---
@@ -357,6 +360,12 @@ def parse_args():
         default=os.getenv("DEVICE_NAME", get_device_name()),
         help="Device name to record in the benchmark results (default: detected hardware model)",
     )
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Logging level (default: env LOG_LEVEL, config.json, or INFO)",
+    )
     return parser.parse_args()
 
 
@@ -403,12 +412,12 @@ def run_benchmark(model_name=None, device_name=None):
         if not file_exists:
             writer.writeheader()
 
-        print("\n==================================================")
-        print(" BENCHMARK FUNCTION CALLING AUTOMÁTICO")
-        print("==================================================")
+        logger.info("==================================================")
+        logger.info(" BENCHMARK FUNCTION CALLING AUTOMÁTICO")
+        logger.info("==================================================")
 
         baseline_ram_mb = round(psutil.virtual_memory().used / (1024 * 1024), 2)
-        print(f"[RAM] Línea base inicial: {baseline_ram_mb} MB")
+        logger.debug("RAM línea base inicial: %s MB", baseline_ram_mb)
 
         ha_validation_headers = get_ha_headers(bearer_token=HA_API_PASSWORD)
         ha_validation_cache = {}
@@ -418,7 +427,7 @@ def run_benchmark(model_name=None, device_name=None):
             prompt_text = item["prompt"]
             prompt_type = item["type"]
 
-            print(f"\n[Ejecutando {prompt_id}] {prompt_text}")
+            logger.info("Ejecutando %s: %s", prompt_id, prompt_text)
             t_start = time.time()
             try:
                 metrics_thread, metrics_stop_event, metrics_by_device_and_second = start_metrics_monitor(
@@ -481,7 +490,7 @@ def run_benchmark(model_name=None, device_name=None):
                         cache=ha_validation_cache,
                     )
                     ha_state_valid = validation_result["result"]
-                    print(f"  ✓ Validación HA: {validation_result['message']}")
+                    logger.info("✓ Validación HA: %s", validation_result["message"])
 
                 metrics_snapshot = stop_metrics_monitor(
                     metrics_thread,
@@ -521,19 +530,20 @@ def run_benchmark(model_name=None, device_name=None):
                 })
                 csv_file.flush()
 
-                print(f"  ✓ Latencia: {latency_sec}s | Rendimiento: {result['tokens_per_second']} tok/s")
-                print(f"  ✓ CPU: {cpu_pct}% | RAM: {ram_mb} MB")
-                print(f"  ✓ GPU: {gpu_pct}% | VRAM: {vram_mb} MB")
-                print(f"  ✓ Potencia: {power_w} W | Temp: {temp_c}°C")
-                print(f"  ✓ Tool Calling válido: {json_valid}")
-                print(f"  ✓ Ejecución HA: {ha_executed}")
-                print(f"  ✓ Respuesta: {result['raw_response'][:500]}")
+                logger.info("✓ Latencia: %ss | Rendimiento: %s tok/s", latency_sec, result["tokens_per_second"])
+                logger.debug("✓ CPU: %s%% | RAM: %s MB", cpu_pct, ram_mb)
+                logger.debug("✓ GPU: %s%% | VRAM: %s MB", gpu_pct, vram_mb)
+                logger.debug("✓ Potencia: %s W | Temp: %s°C", power_w, temp_c)
+                logger.info("✓ Tool Calling válido: %s", json_valid)
+                logger.info("✓ Ejecución HA: %s", ha_executed)
+                logger.debug("✓ Respuesta: %s", result["raw_response"][:500])
             except Exception as exc:
-                print(f"  ✗ Error: {exc}")
+                logger.error("✗ Error: %s", exc)
 
             time.sleep(2)
 
 
 if __name__ == "__main__":
     args = parse_args()
+    configure_logging(cli_level=args.log_level)
     run_benchmark(model_name=args.model, device_name=args.device_name)

@@ -6,6 +6,13 @@ import time
 import shutil
 from pathlib import Path
 
+# Add parent directory to sys.path so we can import the logger module
+sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
+
+from logger import configure_logging, get_logger
+
+logger = get_logger(__name__)
+
 # Paths
 BASE_DIR = Path(__file__).parent.resolve()
 CONFIG_DIR = BASE_DIR / "config"
@@ -37,15 +44,15 @@ def start():
 
     config_file = CONFIG_DIR / "configuration.yaml"
     if not config_file.exists():
-        print(f"[WARNING] {config_file} not found. Creating a default configuration...")
+        logger.warning("%s not found. Creating a default configuration...", config_file)
         write_default_config(config_file)
 
     if not is_docker_running():
-        print("[ERROR] Docker is required but is not running or not installed.")
-        print("[INFO] Install Docker Desktop/Engine and start the daemon before running this demo.")
+        logger.error("Docker is required but is not running or not installed.")
+        logger.info("Install Docker Desktop/Engine and start the daemon before running this demo.")
         return False
 
-    print("[INFO] Docker detected and running. Using Docker to spin up Home Assistant.")
+    logger.info("Docker detected and running. Using Docker to spin up Home Assistant.")
     return start_docker()
 
 def start_docker():
@@ -53,12 +60,12 @@ def start_docker():
     res = subprocess.run(["docker", "ps", "-a", "--filter", f"name={CONTAINER_NAME}", "--format", "{{.Names}}"], stdout=subprocess.PIPE, text=True)
     
     if CONTAINER_NAME in res.stdout.split():
-        print(f"[INFO] Container '{CONTAINER_NAME}' already exists. Starting it...")
+        logger.info("Container '%s' already exists. Starting it...", CONTAINER_NAME)
         subprocess.run(["docker", "start", CONTAINER_NAME])
     else:
         # Convert config dir to absolute posix path for mounting compatibility in Docker
         config_posix = CONFIG_DIR.resolve().as_posix()
-        print(f"[INFO] Creating and starting new container: {CONTAINER_NAME}")
+        logger.info("Creating and starting new container: %s", CONTAINER_NAME)
         cmd = [
             "docker", "run", "-d",
             "--name", CONTAINER_NAME,
@@ -66,15 +73,15 @@ def start_docker():
             "-v", f"{config_posix}:/config",
             IMAGE_NAME
         ]
-        print(f"[INFO] Executing command: {' '.join(cmd)}")
+        logger.debug("Executing command: %s", " ".join(cmd))
         run_res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if run_res.returncode != 0:
-            print(f"[ERROR] Failed to run Docker container: {run_res.stderr}")
+            logger.error("Failed to run Docker container: %s", run_res.stderr)
             return False
-            
-    print("\n[SUCCESS] Home Assistant is running in Docker!")
-    print("[INFO] Access it at: http://localhost:8123")
-    print("[INFO] (Note: When you first connect, you will be prompted to create an owner account.)")
+
+    logger.info("Home Assistant is running in Docker!")
+    logger.info("Access it at: http://localhost:8123")
+    logger.info("(Note: When you first connect, you will be prompted to create an owner account.)")
     return True
 
 def stop():
@@ -84,7 +91,7 @@ def stop():
         try:
             pid = int(PID_FILE.read_text().strip())
             if is_pid_running(pid):
-                print(f"[INFO] Removing stale PID file for process {pid}.")
+                logger.info("Removing stale PID file for process %s.", pid)
         except Exception:
             pass
         PID_FILE.unlink(missing_ok=True)
@@ -92,11 +99,11 @@ def stop():
 def stop_docker():
     res = subprocess.run(["docker", "ps", "-a", "--filter", f"name={CONTAINER_NAME}", "--format", "{{.Names}}"], stdout=subprocess.PIPE, text=True)
     if CONTAINER_NAME in res.stdout.split():
-        print(f"[INFO] Stopping Docker container '{CONTAINER_NAME}'...")
+        logger.info("Stopping Docker container '%s'...", CONTAINER_NAME)
         subprocess.run(["docker", "stop", CONTAINER_NAME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"[INFO] Removing Docker container '{CONTAINER_NAME}'...")
+        logger.info("Removing Docker container '%s'...", CONTAINER_NAME)
         subprocess.run(["docker", "rm", CONTAINER_NAME], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("[SUCCESS] Docker container stopped and removed.")
+        logger.info("Docker container stopped and removed.")
 
 def is_pid_running(pid):
     if os.name == "nt":
@@ -115,27 +122,27 @@ def status():
         res = subprocess.run(["docker", "ps", "--filter", f"name={CONTAINER_NAME}", "--format", "{{.Status}}"], stdout=subprocess.PIPE, text=True)
         status_str = res.stdout.strip()
         if CONTAINER_NAME in status_str or status_str:
-            print(f"[STATUS] Home Assistant (Docker) -> RUNNING ({status_str})")
+            logger.info("Home Assistant (Docker) -> RUNNING (%s)", status_str)
             docker_up = True
 
     if not docker_up:
-        print("[STATUS] Home Assistant -> STOPPED")
+        logger.info("Home Assistant -> STOPPED")
 
 def logs():
     if is_docker_running():
         res = subprocess.run(["docker", "ps", "-a", "--filter", f"name={CONTAINER_NAME}", "--format", "{{.Names}}"], stdout=subprocess.PIPE, text=True)
         if CONTAINER_NAME in res.stdout.split():
-            print("[INFO] Streaming logs from Docker container. Press Ctrl+C to stop.")
+            logger.info("Streaming logs from Docker container. Press Ctrl+C to stop.")
             try:
                 subprocess.run(["docker", "logs", "-f", CONTAINER_NAME])
             except KeyboardInterrupt:
-                print("\n[INFO] Stopped log streaming.")
+                logger.info("Stopped log streaming.")
             return
 
-    print("[ERROR] No running Home Assistant instance found in Docker.")
+    logger.error("No running Home Assistant instance found in Docker.")
 
 def clean():
-    print("[INFO] Initiating cleanup...")
+    logger.info("Initiating cleanup...")
     stop()
 
     for item in CONFIG_DIR.iterdir():
@@ -150,7 +157,7 @@ def clean():
             except Exception:
                 pass
                 
-    print("[SUCCESS] Cleanup finished.")
+    logger.info("Cleanup finished.")
 
 def write_default_config(filepath):
     # Default configuration with predefined API password and automatic auth setup
@@ -182,11 +189,30 @@ demo:
 def main():
     print_banner()
     if len(sys.argv) < 2:
-        print("Usage: python run_demo.py [start|stop|status|logs|clean]")
+        print("Usage: python run_demo.py [start|stop|status|logs|clean] [--log-level LEVEL]")
         sys.exit(1)
-        
-    cmd = sys.argv[1].lower()
-    
+
+    # Parse --log-level if present
+    log_level = None
+    cmd_args = []
+    for arg in sys.argv[1:]:
+        if arg == "--log-level":
+            continue
+        elif cmd_args and cmd_args[-1] == "--log-level":
+            log_level = arg
+        elif arg.startswith("--log-level="):
+            log_level = arg.split("=", 1)[1]
+        else:
+            cmd_args.append(arg)
+
+    configure_logging(cli_level=log_level)
+
+    if not cmd_args:
+        print("Usage: python run_demo.py [start|stop|status|logs|clean] [--log-level LEVEL]")
+        sys.exit(1)
+
+    cmd = cmd_args[0].lower()
+
     if cmd == "start":
         start()
     elif cmd == "stop":
@@ -198,8 +224,8 @@ def main():
     elif cmd == "clean":
         clean()
     else:
-        print(f"[ERROR] Unknown command: {cmd}")
-        print("Usage: python run_demo.py [start|stop|status|logs|clean]")
+        logger.error("Unknown command: %s", cmd)
+        print("Usage: python run_demo.py [start|stop|status|logs|clean] [--log-level LEVEL]")
         sys.exit(1)
 
 if __name__ == "__main__":

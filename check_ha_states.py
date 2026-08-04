@@ -16,8 +16,12 @@ from pathlib import Path
 try:
     import requests
 except ImportError:
-    print("[ERROR] 'requests' library is required. Install it using 'pip install requests'")
+    print("[ERROR] 'requests' library is required. Install it using 'pip install requests'", file=sys.stderr)
     sys.exit(1)
+
+from logger import configure_logging, get_logger
+
+logger = get_logger(__name__)
 
 # Default configuration
 BASE_DIR = Path(__file__).parent.resolve()
@@ -39,7 +43,7 @@ def get_bearer_token(cmd_token=None):
 def load_test_prompts(prompts_path):
     """Loads test-prompts.json."""
     if not prompts_path.exists():
-        print(f"[ERROR] Prompts file not found at: {prompts_path}")
+        logger.error("Prompts file not found at: %s", prompts_path)
         sys.exit(1)
 
     with open(prompts_path, "r", encoding="utf-8") as f:
@@ -268,30 +272,36 @@ def main():
     parser.add_argument("--all", action="store_true", help="Fetch ALL entities from Home Assistant instead of test-prompt evaluation")
     parser.add_argument("--json", action="store_true", help="Output results in raw JSON format")
     parser.add_argument("--json-input", help="JSON string of a single test element or array of elements to validate (bypasses test-prompts.json)")
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Logging level (default: env LOG_LEVEL, config.json, or INFO)",
+    )
 
     args = parser.parse_args()
+    configure_logging(cli_level=args.log_level)
 
     headers = get_ha_headers(api_password=args.password, bearer_token=args.token)
-    
-    print(f"====================================================================================================")
-    print(f" Home Assistant Test Prompt State Verifier")
-    print(f"====================================================================================================")
-    print(f"[INFO] Target URL: {args.url}")
-    
+
+    logger.info("====================================================================================================")
+    logger.info(" Home Assistant Test Prompt State Verifier")
+    logger.info("====================================================================================================")
+    logger.info("Target URL: %s", args.url)
+
     is_connected, msg = check_ha_connection(args.url, headers)
     if not is_connected:
-        print(f"[ERROR] Could not connect to Home Assistant at {args.url}: {msg}")
+        logger.error("Could not connect to Home Assistant at %s: %s", args.url, msg)
         if "401" in str(msg):
-            print("\n[AUTHENTICATION REQUIRED]")
-            print("To authorize API access in Home Assistant:")
-            print("  1. Open Home Assistant in your browser: http://localhost:8123")
-            print("  2. Go to Profile (bottom left) -> 'Long-Lived Access Tokens' -> Create Token")
-            print("  3. Save the token string into file: data/ha-token.txt (or pass --token <TOKEN>)")
+            logger.info("Authentication required. To authorize API access in Home Assistant:")
+            logger.info("  1. Open Home Assistant in your browser: http://localhost:8123")
+            logger.info("  2. Go to Profile (bottom left) -> 'Long-Lived Access Tokens' -> Create Token")
+            logger.info("  3. Save the token string into file: data/ha-token.txt (or pass --token <TOKEN>)")
         else:
-            print("[HINT] Make sure Home Assistant is running: python ha-demo/run_demo.py start")
+            logger.info("Hint: make sure Home Assistant is running: python ha-demo/run_demo.py start")
         sys.exit(1)
 
-    print(f"[SUCCESS] Connected to Home Assistant API ({msg})\n")
+    logger.info("Connected to Home Assistant API (%s)", msg)
 
     if args.all:
         res = requests.get(f"{args.url}/api/states", headers=headers, timeout=5)
@@ -309,16 +319,16 @@ def main():
                     print(f"{eid:<45} | {state:<15} | {fname}")
             return
         else:
-            print(f"[ERROR] Failed to fetch all states: HTTP {res.status_code}")
+            logger.error("Failed to fetch all states: HTTP %s", res.status_code)
             sys.exit(1)
 
     if args.json_input:
         try:
             parsed = json.loads(args.json_input)
             prompts = parsed if isinstance(parsed, list) else [parsed]
-            print(f"[INFO] Validating {len(prompts)} element(s) from --json-input argument")
+            logger.info("Validating %s element(s) from --json-input argument", len(prompts))
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Invalid JSON provided to --json-input: {e}")
+            logger.error("Invalid JSON provided to --json-input: %s", e)
             sys.exit(1)
     else:
         prompts = load_test_prompts(TEST_PROMPTS_FILE)

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Monitor NVIDIA GPU utilization and VRAM usage in the terminal."""
 
+import argparse
 import subprocess
 import sys
 import time
+
+from logger import configure_logging, get_logger
+
+logger = get_logger(__name__)
 
 
 def get_gpu_metrics():
@@ -32,21 +37,37 @@ def get_gpu_metrics():
         return None
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Monitor NVIDIA GPU utilization and VRAM usage")
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Logging level (default: env LOG_LEVEL, config.json, or INFO)",
+    )
+    return parser.parse_args()
+
+
 def main():
-    print("Monitoring NVIDIA GPU usage. Press Ctrl+C to stop.")
+    args = parse_args()
+    configure_logging(cli_level=args.log_level)
+
+    logger.info("Monitoring NVIDIA GPU usage. Press Ctrl+C to stop.")
     try:
         while True:
             metrics = get_gpu_metrics()
             if metrics is None:
-                print("[GPU] unavailable")
+                logger.warning("GPU unavailable")
             else:
-                print(
-                    f"[GPU] Utilization: {metrics['gpu_util_pct']:.1f}% | "
-                    f"VRAM: {metrics['vram_used_mb']:.1f}/{metrics['vram_total_mb']:.1f} MB"
+                logger.info(
+                    "GPU Utilization: %.1f%% | VRAM: %.1f/%.1f MB",
+                    metrics["gpu_util_pct"],
+                    metrics["vram_used_mb"],
+                    metrics["vram_total_mb"],
                 )
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("\nStopped GPU monitor.")
+        logger.info("Stopped GPU monitor.")
 
 
 if __name__ == "__main__":
