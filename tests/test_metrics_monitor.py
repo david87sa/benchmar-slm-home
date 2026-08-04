@@ -113,6 +113,27 @@ class MetricsMonitorTests(unittest.TestCase):
         self.assertEqual(status, "success")
         self.assertEqual(tool_calls, [])
 
+    def test_parse_tool_calls_maps_indeterminado_to_status(self):
+        message_obj = {"content": "indeterminado"}
+
+        is_valid, device_id, action, parameter, status, tool_calls = self.module.parse_tool_calls(message_obj)
+
+        self.assertTrue(is_valid)
+        self.assertEqual(device_id, "null")
+        self.assertEqual(action, "null")
+        self.assertEqual(parameter, None)
+        self.assertEqual(status, "indeterminado")
+        self.assertEqual(tool_calls, [])
+
+    def test_parse_tool_calls_maps_fallo_to_indeterminado(self):
+        message_obj = {"content": "fallo"}
+
+        is_valid, device_id, action, parameter, status, tool_calls = self.module.parse_tool_calls(message_obj)
+
+        self.assertTrue(is_valid)
+        self.assertEqual(status, "indeterminado")
+        self.assertEqual(tool_calls, [])
+
     def test_execute_ha_command_uses_configured_token(self):
         captured = {}
 

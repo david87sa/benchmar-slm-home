@@ -180,7 +180,7 @@ def validate_single_element(element, ha_url=DEFAULT_HA_URL, headers=None, cache=
         "message": "SKIPPED ⚪"
     }
 
-    if expected_status == "failure" or not expected_device or expected_device in ("null", "multiple"):
+    if expected_status in ("failure", "indeterminado") or not expected_device or expected_device in ("null", "multiple"):
         result_obj["message"] = "SKIPPED ⚪ (Invalid/Ambiguous)"
         return result_obj
 

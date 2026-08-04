@@ -144,7 +144,7 @@ template:
   - lock:
       - name: "Llavín Inteligente"
         unique_id: smart_lock_main_door_001
-        value_template: "{{ is_state('input_boolean.smart_lock_state', 'on') }}"
+        state: "{% if is_state('input_boolean.smart_lock_state', 'on') %}locked{% else %}unlocked{% endif %}"
         lock:
           service: input_boolean.turn_on
           target:
@@ -167,6 +167,3 @@ climate:
     cold_tolerance: 0.3
     hot_tolerance: 0.3
     initial_hvac_mode: "heat"
-
-
-

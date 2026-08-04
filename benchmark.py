@@ -298,6 +298,13 @@ def parse_tool_calls(message_obj):
                 action = action_map.get(func_name, func_name)
                 return True, device_id, action, parameter, "success", []
 
+        # Plain-text status responses: model returns "indeterminado" or "fallo"
+        # when the prompt is ambiguous, out-of-domain, or has no valid device.
+        # Map both to "indeterminado" to match expected_status in test-prompts.json.
+        content_lower = content.lower()
+        if content_lower in ("indeterminado", "fallo"):
+            return True, "null", "null", None, "indeterminado", []
+
         return False, "null", "null", None, "failure", []
 
     if len(tool_calls) > 1:
