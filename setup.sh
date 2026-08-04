@@ -8,9 +8,13 @@ echo "=================================================="
 echo "[1/4] Actualizando sistema e instalando dependencias..."
 sudo apt update && sudo apt install -y python3 python3-pip python3-venv git curl
 
-# 2. Instalar Ollama de forma oficial
-echo "[2/4] Instalando Ollama..."
-curl -fsSL https://ollama.com/install.sh | sh
+# 2. Instalar Ollama de forma oficial (si no está ya instalado)
+if command -v ollama &> /dev/null; then
+  echo "[2/4] Ollama ya está instalado ($(ollama --version 2>/dev/null || echo 'versión desconocida')). Omitiendo instalación..."
+else
+  echo "[2/4] Instalando Ollama..."
+  curl -fsSL https://ollama.com/install.sh | sh
+fi
 
 # Asegurar que el servicio de Ollama esté corriendo
 sudo systemctl enable --now ollama
