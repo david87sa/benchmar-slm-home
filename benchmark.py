@@ -34,12 +34,12 @@ DATA_DIR = BASE_DIR / "data"
 CONFIG_PATH = DATA_DIR / "config.json"
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 DEVICE_NAME = os.getenv("DEVICE_NAME", get_device_name())
-HA_API_URL = "http://localhost:8123"
 OUTPUT_CSV = BASE_DIR / "benchmark_results_master.csv"
 
 with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
     CONFIG = json.load(fh)
 
+HA_API_URL = os.getenv("HA_URL", CONFIG.get("ha_url", "http://localhost:8123"))
 HA_API_PASSWORD = os.getenv("HA_API_PASSWORD", CONFIG.get("ha_api_key", ""))
 MODEL_NAME = os.getenv("OLLAMA_MODEL", CONFIG.get("model_name", "qwen2.5:1.5b"))
 MQTT_BROKER = CONFIG.get("mqtt_broker", "192.168.1.100")

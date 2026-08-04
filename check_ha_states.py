@@ -8,6 +8,7 @@ Can also be imported as a module: use `validate_single_element()` to verify a si
 test element against a live Home Assistant instance.
 """
 
+import os
 import sys
 import json
 import argparse
@@ -27,8 +28,23 @@ logger = get_logger(__name__)
 BASE_DIR = Path(__file__).parent.resolve()
 TEST_PROMPTS_FILE = BASE_DIR / "data" / "test-prompts.json"
 TOKEN_FILE = BASE_DIR / "data" / "ha-token.txt"
-DEFAULT_HA_URL = "http://localhost:8123"
+CONFIG_PATH = BASE_DIR / "data" / "config.json"
 DEFAULT_API_PASSWORD = "testing-key"
+
+
+def _load_config_ha_url():
+    """Load Home Assistant URL from data/config.json if available."""
+    try:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+                config = json.load(fh)
+            return config.get("ha_url")
+    except (json.JSONDecodeError, OSError):
+        pass
+    return None
+
+
+DEFAULT_HA_URL = os.getenv("HA_URL", _load_config_ha_url() or "http://localhost:8123")
 
 def get_bearer_token(cmd_token=None):
     """Returns Bearer Token from CLI arg or data/ha-token.txt."""
