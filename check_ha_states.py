@@ -9,6 +9,7 @@ test element against a live Home Assistant instance.
 """
 
 import os
+import re
 import sys
 import json
 import argparse
@@ -98,6 +99,7 @@ def fetch_entity_state(ha_url, entity_id, headers, cache={}):
     url = f"{ha_url}/api/states/{entity_id}"
     try:
         res = requests.get(url, headers=headers, timeout=5)
+        logger.debug("HA respuesta para %s:\n%s", entity_id, json.dumps(res.json(), indent=2, ensure_ascii=False) if res.status_code == 200 else res.text)
         if res.status_code == 200:
             result = (True, res.json())
         elif res.status_code == 404:
@@ -110,9 +112,23 @@ def fetch_entity_state(ha_url, entity_id, headers, cache={}):
     cache[entity_id] = result
     return result
 
+def is_regex_pattern(parameter):
+    """Detects if a parameter is a regex pattern (prefixed with 'regex:')."""
+    return isinstance(parameter, str) and parameter.startswith("regex:")
+
+
+def get_regex_pattern(parameter):
+    """Extracts the regex pattern from a 'regex:...' parameter."""
+    if is_regex_pattern(parameter):
+        return parameter[len("regex:"):]
+    return None
+
+
 def get_expected_states(action, parameter, device_id):
     """
     Returns a list of acceptable state strings for a given action and parameter.
+    If parameter is a regex pattern (prefixed with 'regex:'), returns a list
+    containing the regex pattern string (without the prefix).
     """
     if action == "turn_on":
         return ["on"]
@@ -126,6 +142,8 @@ def get_expected_states(action, parameter, device_id):
         return ["unlocked", "off"]
     elif action == "set_value":
         if parameter is not None and str(parameter) != "null":
+            if is_regex_pattern(parameter):
+                return [get_regex_pattern(parameter)]
             try:
                 val_float = float(parameter)
                 return [str(parameter), f"{val_float:.1f}", f"{val_float:.0f}"]
@@ -197,6 +215,22 @@ def validate_single_element(element, ha_url=DEFAULT_HA_URL, headers=None, cache=
         temperature_value = attributes.get("temperature")
         if temperature_value is not None:
             live_state = str(temperature_value)
+
+    if is_regex_pattern(expected_param):
+        # Regex-based validation: expected_parameter is prefixed with 'regex:'
+        # Evaluated first so it also works for state queries (get_state)
+        pattern = get_regex_pattern(expected_param)
+        try:
+            if re.fullmatch(pattern, live_state):
+                result_obj["result"] = "match"
+                result_obj["message"] = f"MATCH ✓ (regex '{pattern}' matches live state: {live_state})"
+            else:
+                result_obj["result"] = "mismatch"
+                result_obj["message"] = f"MISMATCH ✗ (regex '{pattern}' does not match live state: {live_state})"
+        except re.error as exc:
+            result_obj["result"] = "mismatch"
+            result_obj["message"] = f"MISMATCH ✗ (invalid regex '{pattern}': {exc})"
+        return result_obj
 
     result_obj["live_state"] = live_state
     acceptable_states = get_expected_states(expected_action, expected_param, expected_device)

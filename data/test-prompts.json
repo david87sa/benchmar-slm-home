@@ -140,7 +140,7 @@
         "prompt": "¿Está abierta la puerta principal?",
         "expected_device": "binary_sensor.sensor_puerta_principal",
         "expected_action": "get_state",
-        "expected_parameter": "null",
+        "expected_parameter": "regex:^(on|off)$",
         "expected_status": "success"
     },
     {
@@ -158,7 +158,16 @@
         "prompt": "¿Cuál es la temperatura del hogar?",
         "expected_device": "sensor.temperatura_del_hogar",
         "expected_action": "get_state",
-        "expected_parameter": "null",
+        "expected_parameter": "regex:^\\d+(\\.\\d+)?$",
+        "expected_status": "success"
+    },
+    {
+        "id": "CMD_019",
+        "type": "State Query",
+        "prompt": "¿Cuál es el consumo de energía actual?",
+        "expected_device": "sensor.consumo_energia",
+        "expected_action": "get_state",
+        "expected_parameter": "regex:^\\d+(\\.\\d+)?\\s*W$",
         "expected_status": "success"
     }
 ]

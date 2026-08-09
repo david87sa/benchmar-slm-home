@@ -77,21 +77,37 @@ def start_mqtt_listener():
 
 # --- System metrics ---
 def get_cpu_temperature():
-    if sys.platform.startswith("win"):
-        try:
+    try:
+        # Linux/macOS: psutil.sensors_temperatures() solo existe en estas plataformas
+        if hasattr(psutil, "sensors_temperatures"):
             temps = psutil.sensors_temperatures()
             if temps:
                 for entries in temps.values():
                     for entry in entries:
                         return entry.current
-        except Exception:
-            pass
-        return -1.0
-    try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r", encoding="utf-8") as f:
-            return float(f.read().strip()) / 1000.0
-    except FileNotFoundError:
-        return -1.0
+        # Linux: fallback a sysfs
+        if sys.platform.startswith("linux"):
+            with open("/sys/class/thermal/thermal_zone0/temp", "r", encoding="utf-8") as f:
+                return float(f.read().strip()) / 1000.0
+        # Windows: intentar WMI (MSAcpi_ThermalZoneTemperature) vía PowerShell
+        if sys.platform.startswith("win"):
+            result = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "(Get-CimInstance -ClassName MSAcpi_ThermalZoneTemperature -Namespace root/wmi | Select-Object -First 1).CurrentTemperature",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # WMI devuelve décimas de Kelvin
+                return (float(result.stdout.strip()) / 10.0) - 273.15
+    except Exception:
+        logger.error("Error al obtener temperatura de CPU", exc_info=True)
+    return -1.0
 
 
 def get_gpu_metrics():
@@ -206,6 +222,7 @@ def execute_ha_command(parsed_cmd, ha_url=HA_API_URL, api_password=HA_API_PASSWO
             url = f"{ha_url}/api/services/{domain}/{action}"
             payload = {"entity_id": device_id}
             res = requests.post(url, headers=headers, json=payload, timeout=5)
+            logger.debug("HA respuesta ejecución %s %s:\n%s", action, device_id, res.text)
 
         elif action == "set_value":
             if domain == "climate":
@@ -226,10 +243,12 @@ def execute_ha_command(parsed_cmd, ha_url=HA_API_URL, api_password=HA_API_PASSWO
                 url = f"{ha_url}/api/services/{domain}/set_value"
                 payload = {"entity_id": device_id, "value": parameter}
             res = requests.post(url, headers=headers, json=payload, timeout=5)
+            logger.debug("HA respuesta ejecución %s %s:\n%s", action, device_id, res.text)
 
         elif action == "get_state":
             url = f"{ha_url}/api/states/{device_id}"
             res = requests.get(url, headers=headers, timeout=5)
+            logger.debug("HA respuesta consulta %s:\n%s", device_id, res.text)
             if res.status_code == 200:
                 state = res.json().get("state", "unknown")
                 return True, f"Estado: {state}"
@@ -354,6 +373,30 @@ def call_ollama(prompt_text, system_prompt, tools_definitions):
     }
 
 
+def warmup_model():
+    """Hace una llamada de precarga a Ollama para que el modelo quede cargado en memoria
+    antes de iniciar el benchmark, evitando que la primera llamada real tarde más de la cuenta."""
+    try:
+        logger.info("Precargando modelo %s en Ollama...", MODEL_NAME)
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [
+                {"role": "user", "content": "Hola"},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.0},
+        }
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=180)
+        if response.status_code != 200:
+            logger.warning("Warm-up falló: Ollama devolvió HTTP %s", response.status_code)
+            return False
+        logger.info("Modelo %s precargado correctamente.", MODEL_NAME)
+        return True
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Warm-up no disponible: %s", exc)
+        return False
+
+
 # --- Benchmark loop ---
 def parse_args():
     parser = argparse.ArgumentParser(description="Run the Home Assistant function-calling benchmark")
@@ -373,10 +416,15 @@ def parse_args():
         choices=["debug", "info", "warning", "error", "critical"],
         help="Logging level (default: env LOG_LEVEL, config.json, or INFO)",
     )
+    parser.add_argument(
+        "--prompt-id",
+        default=None,
+        help="ID del test prompt a ejecutar (ej: CMD_001). Si no se especifica, ejecuta todos.",
+    )
     return parser.parse_args()
 
 
-def run_benchmark(model_name=None, device_name=None):
+def run_benchmark(model_name=None, device_name=None, prompt_id=None):
     global MODEL_NAME, DEVICE_NAME
     if model_name is not None:
         MODEL_NAME = model_name
@@ -390,6 +438,15 @@ def run_benchmark(model_name=None, device_name=None):
         test_prompts = json.load(fh)
     with open(DATA_DIR / "system-prompt.md", "r", encoding="utf-8") as fh:
         system_prompt = fh.read()
+
+    if prompt_id:
+        filtered = [item for item in test_prompts if item["id"] == prompt_id]
+        if not filtered:
+            available_ids = ", ".join(item["id"] for item in test_prompts)
+            logger.error("No se encontró el prompt con ID '%s'. IDs disponibles: %s", prompt_id, available_ids)
+            sys.exit(1)
+        test_prompts = filtered
+        logger.info("Ejecutando solo el prompt: %s", prompt_id)
 
     file_exists = OUTPUT_CSV.exists()
     with open(OUTPUT_CSV, mode="a", newline="", encoding="utf-8") as csv_file:
@@ -426,6 +483,8 @@ def run_benchmark(model_name=None, device_name=None):
         baseline_ram_mb = round(psutil.virtual_memory().used / (1024 * 1024), 2)
         logger.debug("RAM línea base inicial: %s MB", baseline_ram_mb)
 
+        warmup_model()
+
         ha_validation_headers = get_ha_headers(bearer_token=HA_API_PASSWORD)
         ha_validation_cache = {}
 
@@ -444,6 +503,7 @@ def run_benchmark(model_name=None, device_name=None):
                 )
                 result = call_ollama(prompt_text, system_prompt, tools_definitions)
                 latency_sec = round(time.time() - t_start, 4)
+                logger.debug("Respuesta del modelo (%s): %s", prompt_id, result["raw_response"])
 
                 message_obj = result["message_obj"]
                 is_valid, model_device, model_action, model_param, model_status, tool_calls_list = parse_tool_calls(message_obj)
@@ -553,4 +613,4 @@ def run_benchmark(model_name=None, device_name=None):
 if __name__ == "__main__":
     args = parse_args()
     configure_logging(cli_level=args.log_level)
-    run_benchmark(model_name=args.model, device_name=args.device_name)
+    run_benchmark(model_name=args.model, device_name=args.device_name, prompt_id=args.prompt_id)
