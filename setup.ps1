@@ -27,7 +27,7 @@ ollama pull phi4-mini:3.8b
 $models = @("qwen2.5:1.5b", "functiongemma", "phi4-mini:3.8b")
 foreach ($model in $models) {
     Write-Host "Ejecutando benchmark con el modelo: $model" -ForegroundColor Yellow
-    python .\benchmark.py --model $model
+    python .\benchmark.py --model $model --log-level debug
 }
 
 Write-Host "==================================================" -ForegroundColor Green

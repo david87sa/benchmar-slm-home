@@ -163,6 +163,12 @@ def start_metrics_monitor(device_name, sample_interval=1.0, baseline_ram_mb=None
             snapshot["gpu_usage_pct"] = gpu_pct
             snapshot["vram_usage_mb"] = vram_mb
             metrics_by_device_and_second.setdefault(device_name, {})[second_key] = snapshot
+            logger.debug(
+                "Métricas [%s] segundo=%d: %s",
+                device_name,
+                second_key,
+                json.dumps(snapshot, ensure_ascii=False),
+            )
             time.sleep(sample_interval)
 
     thread = threading.Thread(target=monitor_loop, daemon=True)
@@ -498,12 +504,13 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
             try:
                 metrics_thread, metrics_stop_event, metrics_by_device_and_second = start_metrics_monitor(
                     DEVICE_NAME,
-                    sample_interval=1.0,
+                    sample_interval=0.001,
                     baseline_ram_mb=baseline_ram_mb,
                 )
+                logger.debug("______________Métricas monitor iniciadas para %s", DEVICE_NAME)
                 result = call_ollama(prompt_text, system_prompt, tools_definitions)
                 latency_sec = round(time.time() - t_start, 4)
-                logger.debug("Respuesta del modelo (%s): %s", prompt_id, result["raw_response"])
+                logger.debug("____________Respuesta del modelo (%s): %s", prompt_id, result["raw_response"])
 
                 message_obj = result["message_obj"]
                 is_valid, model_device, model_action, model_param, model_status, tool_calls_list = parse_tool_calls(message_obj)
@@ -558,7 +565,6 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                     )
                     ha_state_valid = validation_result["result"]
                     logger.info("✓ Validación HA: %s", validation_result["message"])
-
                 metrics_snapshot = stop_metrics_monitor(
                     metrics_thread,
                     metrics_stop_event,
@@ -606,8 +612,9 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 logger.debug("✓ Respuesta: %s", result["raw_response"][:500])
             except Exception as exc:
                 logger.error("✗ Error: %s", exc)
-
+                
             time.sleep(2)
+
 
 
 if __name__ == "__main__":

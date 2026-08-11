@@ -58,6 +58,39 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
 - Directory: [server](server)
 - Includes demo setup scripts and Home Assistant configuration examples.
 
+### 8. GPU monitor
+- File: [monitor_gpu.py](monitor_gpu.py)
+- Live, auto-refreshing terminal dashboard (like `nvidia-smi`/`nvtop`):
+  - GPU model and driver version
+  - GPU utilization and VRAM usage with progress bars
+  - Temperature, power draw, fan speed and SM/memory clocks
+  - The compute processes currently using the GPU
+- Run it directly:
+
+      python monitor_gpu.py
+
+- Or open it in a **separate console window** with the launchers:
+  - Windows: `powershell -ExecutionPolicy Bypass -File .\start_gpu_monitor.ps1`
+  - Linux/macOS: `./start_gpu_monitor.sh`
+- Options:
+  - `--refresh N`  refresh interval in seconds (default: 1.0)
+  - `--as-log`      single log line per sample (old style, useful when piping)
+  - `--log-level LEVEL`  logging level (same resolution order as elsewhere)
+- When stdout is piped or redirected, the script automatically falls back to the log-line mode.
+
+### 9. Lightweight GPU usage logger
+- File: [monitor_gpu_lite.py](monitor_gpu_lite.py)
+- Minimal, dependency-free script that prints one line per sample with
+  **millisecond-precision timestamps** and GPU usage, handy for correlating
+  GPU state with benchmark events or piping to a log file:
+
+      python monitor_gpu_lite.py --refresh 0.2
+
+  ```
+  2026-08-10 21:05:10.745 | GPU   0.0% | VRAM 0/8151 MiB
+  ```
+- Options: `--refresh N` (seconds between samples), `--no-vram` (utilization only), `--show-temp` (also print temperature).
+
 ## Workflow
 1. The benchmark script loads configuration from [data/config.json](data/config.json).
 2. It sends a prompt to Ollama with the configured model.
