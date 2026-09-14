@@ -23,29 +23,13 @@ the script automatically falls back to the one-log-line-per-sample mode.
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 import time
 
+import gpu_metrics
 from logger import configure_logging, get_logger
 
 logger = get_logger(__name__)
-
-GPU_QUERY = ",".join(
-    [
-        "name",
-        "driver_version",
-        "utilization.gpu",
-        "memory.used",
-        "memory.total",
-        "temperature.gpu",
-        "power.draw",
-        "power.limit",
-        "fan.speed",
-        "clocks.sm",
-        "clocks.mem",
-    ]
-)
 
 # ANSI escape codes
 _RST = "\x1b[0m"
@@ -57,73 +41,12 @@ _YELLOW = "\x1b[33m"
 _CYAN = "\x1b[36m"
 
 
-# --- nvidia-smi helpers ---
-def _run_nvidia_smi(query, query_flag="--query-gpu", extra_flags=None):
-    """Run nvidia-smi for the given query and return its stdout, or None."""
-    cmd = ["nvidia-smi", f"{query_flag}={query}", "--format=csv,noheader,nounits"]
-    if extra_flags:
-        cmd.extend(extra_flags)
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout
-
-
-def _to_float(value):
-    text = (value or "").strip()
-    if not text or text.upper() in ("N/A", "[N/A]", "[NOT SUPPORTED]", "NOT SUPPORTED"):
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def get_gpu_metrics():
-    """Return a dict with the metrics of the first NVIDIA GPU, or None."""
-    raw = _run_nvidia_smi(GPU_QUERY)
-    if not raw:
-        return None
-    first_line = ""
-    for line in raw.strip().splitlines():
-        if line.strip():
-            first_line = line.strip()
-            break
-    parts = [p.strip() for p in first_line.split(",")]
-    if len(parts) < 11:
-        return None
-    return {
-        "name": parts[0] or "NVIDIA GPU",
-        "driver_version": parts[1],
-        "util_gpu": _to_float(parts[2]),
-        "mem_used_mb": _to_float(parts[3]),
-        "mem_total_mb": _to_float(parts[4]),
-        "temp_gpu": _to_float(parts[5]),
-        "power_draw_w": _to_float(parts[6]),
-        "power_limit_w": _to_float(parts[7]),
-        "fan_speed_pct": _to_float(parts[8]),
-        "clk_sm_mhz": _to_float(parts[9]),
-        "clk_mem_mhz": _to_float(parts[10]),
-    }
-
-
-def get_gpu_processes():
-    """Return a list of dicts {pid, name, mem_mb} for GPU compute apps."""
-    raw = _run_nvidia_smi("pid,process_name,used_memory", query_flag="--query-compute-apps")
-    if not raw:
-        return []
-    processes = []
-    for line in raw.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        pid = parts[0]
-        name = os.path.basename(",".join(parts[1:-1]).strip()) or "unknown"
-        processes.append({"pid": pid, "name": name, "mem_mb": _to_float(parts[-1])})
-    return processes
+# --- GPU readers (shared with benchmark.py / monitor_gpu_lite.py) ---
+# gpu_metrics reads nvidia-smi on discrete NVIDIA GPUs and falls back to
+# sysfs on Jetson boards (Orin Nano, Xavier, Nano, TX…) where nvidia-smi
+# is not available.
+get_gpu_metrics = gpu_metrics.get_gpu_metrics
+get_gpu_processes = gpu_metrics.get_gpu_processes
 
 
 # --- console helpers ---
@@ -194,7 +117,7 @@ def _render(metrics, processes, refresh):
 
     if metrics is None:
         lines.append(f"{_RED}GPU unavailable.{_RST}")
-        lines.append("  Check that nvidia-smi is installed and in PATH.")
+        lines.append("  No NVIDIA GPU detected (nvidia-smi not found and no Jetson iGPU sysfs).")
     else:
         name = metrics["name"]
         driver = metrics["driver_version"] or "?"

@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import threading
 import time
 import types
 import unittest
@@ -18,6 +19,7 @@ class MetricsMonitorTests(unittest.TestCase):
         self.module.current_power_watts = 123.4
         self.module.get_cpu_temperature = lambda: 70.0
         self.module.get_gpu_metrics = lambda: (90.0, 2048.0)
+        self.module.get_battery_power_watts = lambda: 14.5
         self.module.psutil.virtual_memory = lambda: types.SimpleNamespace(used=2 * 1024 * 1024 * 1024)
         self.module.psutil.cpu_percent = lambda interval=None: 65.0
 
@@ -41,11 +43,13 @@ class MetricsMonitorTests(unittest.TestCase):
         self.assertEqual(metrics["vram_usage_mb"], 2048.0)
         self.assertEqual(metrics["power_watts"], 123.4)
         self.assertEqual(metrics["cpu_temp_c"], 70.0)
+        self.assertEqual(metrics["battery_power_watts"], 14.5)
 
     def test_stop_metrics_monitor_uses_ram_delta_from_baseline(self):
         self.module.current_power_watts = 0.0
         self.module.get_cpu_temperature = lambda: 40.0
         self.module.get_gpu_metrics = lambda: (10.0, 512.0)
+        self.module.get_battery_power_watts = lambda: 8.0
         self.module.psutil.virtual_memory = lambda: types.SimpleNamespace(used=3 * 1024 * 1024 * 1024)
         self.module.psutil.cpu_percent = lambda interval=None: 20.0
 
@@ -63,6 +67,57 @@ class MetricsMonitorTests(unittest.TestCase):
         )
 
         self.assertEqual(metrics["ram_usage_mb"], 1024.0)
+
+    def test_stop_metrics_monitor_reports_peak_battery_power(self):
+        snapshots = {
+            second: {
+                "cpu_usage_pct": 20.0,
+                "ram_usage_mb": 2048.0,
+                "gpu_usage_pct": 10.0,
+                "vram_usage_mb": 512.0,
+                "power_watts": 0.0,
+                "cpu_temp_c": 40.0,
+                "battery_power_watts": watts,
+            }
+            for second, watts in enumerate([3.2, 8.7, 12.4, 14.1])
+        }
+        metrics_by_device_and_second = {"device-c": snapshots}
+
+        dummy_thread = threading.Thread()
+        metrics = self.module.stop_metrics_monitor(
+            dummy_thread,
+            threading.Event(),
+            metrics_by_device_and_second,
+            "device-c",
+            baseline_ram_mb=2 * 1024.0,
+        )
+
+        self.assertEqual(metrics["battery_power_watts"], 14.1)
+
+    def test_stop_metrics_monitor_without_battery_returns_none(self):
+        snapshots = {
+            100: {
+                "cpu_usage_pct": 20.0,
+                "ram_usage_mb": 2048.0,
+                "gpu_usage_pct": 10.0,
+                "vram_usage_mb": 512.0,
+                "power_watts": 0.0,
+                "cpu_temp_c": 40.0,
+                "battery_power_watts": None,
+            }
+        }
+        metrics_by_device_and_second = {"device-d": snapshots}
+
+        dummy_thread = threading.Thread()
+        metrics = self.module.stop_metrics_monitor(
+            dummy_thread,
+            threading.Event(),
+            metrics_by_device_and_second,
+            "device-d",
+            baseline_ram_mb=2 * 1024.0,
+        )
+
+        self.assertIsNone(metrics["battery_power_watts"])
 
     def test_parse_tool_calls_accepts_json_string_arguments(self):
         message_obj = {
@@ -139,7 +194,7 @@ class MetricsMonitorTests(unittest.TestCase):
 
         def fake_post(url, headers=None, json=None, timeout=5):
             captured["headers"] = headers
-            return types.SimpleNamespace(status_code=200)
+            return types.SimpleNamespace(status_code=200, text="")
 
         self.module.requests.post = fake_post
 

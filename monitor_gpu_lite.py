@@ -5,6 +5,10 @@ A lightweight companion to monitor_gpu.py: one line per sample with
 millisecond precision, handy for correlating GPU state with benchmark events
 or for piping into a log file. Uses only the standard library.
 
+Works on discrete NVIDIA GPUs (via nvidia-smi) and on NVIDIA Jetson boards
+(Orin Nano, etc.) via the shared gpu_metrics reader, which falls back to
+sysfs when nvidia-smi is not available.
+
 Usage:
     python monitor_gpu_lite.py                  # 1 sample/second
     python monitor_gpu_lite.py --refresh 0.1    # ~10 samples/second
@@ -16,12 +20,11 @@ Example output:
 """
 
 import argparse
-import subprocess
 import sys
 import time
 from datetime import datetime
 
-GPU_QUERY = "utilization.gpu,memory.used,memory.total,temperature.gpu"
+import gpu_metrics
 
 
 def now_ms():
@@ -30,42 +33,26 @@ def now_ms():
 
 
 def get_gpu_sample():
-    """Query nvidia-smi once and return {util, mem_used, mem_total, temp} or None."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", f"--query-gpu={GPU_QUERY}", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0 or not result.stdout.strip():
-        return None
-
-    parts = [p.strip() for p in result.stdout.strip().splitlines()[0].split(",")]
-    try:
-        return {
-            "util": float(parts[0]),
-            "mem_used": float(parts[1]),
-            "mem_total": float(parts[2]),
-            "temp": float(parts[3]),
-        }
-    except (ValueError, IndexError):
-        return None
+    """Sample GPU state once and return {util, mem_used, mem_total, temp} or None."""
+    return gpu_metrics.get_gpu_sample()
 
 
 def print_line(sample, args):
     fields = [now_ms()]
-    if sample is None:
+    if sample is None or sample.get("util") is None:
         fields.append("GPU N/A")
     else:
         fields.append(f"GPU {sample['util']:5.1f}%")
         if not args.no_vram:
-            fields.append(f"VRAM {sample['mem_used']:.0f}/{sample['mem_total']:.0f} MiB")
+            if sample.get("mem_used") is not None and sample.get("mem_total") is not None:
+                fields.append(f"VRAM {sample['mem_used']:.0f}/{sample['mem_total']:.0f} MiB")
+            else:
+                fields.append("VRAM N/A")
         if args.show_temp:
-            fields.append(f"Temp {sample['temp']:.0f}°C")
+            if sample.get("temp") is not None:
+                fields.append(f"Temp {sample['temp']:.0f}°C")
+            else:
+                fields.append("Temp N/A")
     print(" | ".join(fields), flush=True)
 
 

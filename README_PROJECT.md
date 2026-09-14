@@ -13,6 +13,7 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
   - device-name selection via CLI argument or auto-detection
   - configuration loading from [data/config.json](data/config.json)
   - Home Assistant execution and validation
+  - system metrics capture (CPU, RAM, GPU/VRAM, temperature, MQTT wall power, and battery power draw in watts)
   - configurable logging via --log-level
 
 ### 2. Home Assistant validation helper
@@ -65,6 +66,12 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
   - GPU utilization and VRAM usage with progress bars
   - Temperature, power draw, fan speed and SM/memory clocks
   - The compute processes currently using the GPU
+- **Backend-agnostic**: on discrete NVIDIA GPUs it reads `nvidia-smi`; on
+  NVIDIA Jetson boards (Orin Nano, etc.), where `nvidia-smi` is not shipped,
+  it automatically reads the same sysfs sources `tegrastats`/`jtop` use
+  (see [gpu_metrics.py](gpu_metrics.py)). Process/VRAM data that requires
+  `nvidia-smi` (per-process GPU memory, power, fan) is shown as `N/A` on
+  Jetson.
 - Run it directly:
 
       python monitor_gpu.py
@@ -78,11 +85,25 @@ This project benchmarks Home Assistant function-calling workflows using Ollama m
   - `--log-level LEVEL`  logging level (same resolution order as elsewhere)
 - When stdout is piped or redirected, the script automatically falls back to the log-line mode.
 
+### 8b. GPU metrics backend ([gpu_metrics.py](gpu_metrics.py))
+Shared by `benchmark.py`, `monitor_gpu.py` and `monitor_gpu_lite.py`.
+Backend selection is automatic:
+1. `nvidia-smi` — discrete NVIDIA GPUs (Linux/Windows).
+2. Jetson sysfs — NVIDIA Jetson (Orin Nano, Orin, Xavier, Nano, TX…), read
+   from `/sys/devices/gpu.0/load` (GPU %), `/sys/devices/virtual/thermal`
+   (temperature), `/sys/class/devfreq/57000000.gpu` (core clock),
+   `/proc/meminfo` and `/etc/nv_tegra_release` (L4T version).
+- **VRAM caveat:** Jetson boards have no dedicated VRAM — the GPU shares the
+  system LPDDR pool, so `vram_usage_mb` / the VRAM progress bar report the
+  shared memory used by the board (total minus available from `/proc/meminfo`).
+
 ### 9. Lightweight GPU usage logger
 - File: [monitor_gpu_lite.py](monitor_gpu_lite.py)
 - Minimal, dependency-free script that prints one line per sample with
   **millisecond-precision timestamps** and GPU usage, handy for correlating
-  GPU state with benchmark events or piping to a log file:
+  GPU state with benchmark events or piping to a log file.
+- Uses the same backend-agnostic reader as [gpu_metrics.py](gpu_metrics.py),
+  so it works on discrete NVIDIA GPUs and Jetson boards alike:
 
       python monitor_gpu_lite.py --refresh 0.2
 
@@ -114,6 +135,7 @@ Enable debug logging to see detailed execution information:
 
 ## Notes
 - The project expects a running Ollama instance and a reachable Home Assistant instance.
-- MQTT support is used for collecting power data during benchmarking.
+- MQTT support is used for collecting wall-power data during benchmarking.
+- `battery_power_watts` captures the battery power draw in watts (positive = discharging/consumption, negative = charging, `0` when plugged and full, empty cell when no battery is present). Sources: Linux sysfs `power_now`, Windows WMI ACPI `BatteryStatus` (with a `Win32_Battery` estimate fallback), macOS `ioreg AppleSmartBattery`. The reported value is the peak consumption measured during the run.
 - Authentication for Home Assistant can come from the configured API key or a token file.
 - Logging can be tuned via --log-level, LOG_LEVEL env var, or config.json.

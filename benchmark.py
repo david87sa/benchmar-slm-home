@@ -22,6 +22,7 @@ import psutil
 import requests
 import paho.mqtt.client as mqtt
 
+import gpu_metrics
 from check_ha_states import get_ha_headers, validate_single_element
 from device_info import get_device_name
 from logger import configure_logging, get_logger
@@ -111,32 +112,157 @@ def get_cpu_temperature():
 
 
 def get_gpu_metrics():
-    try:
-        candidates = ["nvidia-smi", "nvidia-smi.exe"]
-        executable = next((name for name in candidates if subprocess.run(["where", name], capture_output=True, text=True, check=False).returncode == 0), None)
-        if not executable:
-            return 0.0, 0.0
+    """GPU utilization (%) and used GPU memory (MB).
 
+    Uses gpu_metrics, which reads nvidia-smi on discrete NVIDIA GPUs and
+    falls back to sysfs on Jetson boards (Orin Nano, etc.) where nvidia-smi
+    is not available.
+    """
+    metrics = gpu_metrics.get_gpu_metrics()
+    if metrics is None:
+        return 0.0, 0.0
+    return (metrics.get("util_gpu") or 0.0), (metrics.get("mem_used_mb") or 0.0)
+
+
+BATTERY_POWER_CACHE_TTL = 1.0
+_battery_power_cache = {"sampled_at": 0.0, "watts": None}
+
+
+def _read_battery_power_watts_linux():
+    """Potencia de batería (W) leyendo sysfs de Linux. None si no hay batería."""
+    for power_dir in ("BAT0", "BAT1", "BAT2", "BAT3"):
+        base = f"/sys/class/power_supply/{power_dir}"
+        try:
+            with open(f"{base}/status", "r", encoding="utf-8") as f:
+                status = f.read().strip()
+        except Exception:
+            continue
+
+        power_uw = None
+        try:
+            with open(f"{base}/power_now", "r", encoding="utf-8") as f:
+                power_uw = float(f.read().strip())
+        except Exception:
+            try:
+                with open(f"{base}/current_now", "r", encoding="utf-8") as f:
+                    current_ua = float(f.read().strip())
+                with open(f"{base}/voltage_now", "r", encoding="utf-8") as f:
+                    voltage_uv = float(f.read().strip())
+                # µA * µV = µW
+                power_uw = current_ua * voltage_uv
+            except Exception:
+                continue
+
+        watts = power_uw / 1e6
+        if status == "Charging":
+            return -abs(watts)
+        if status in ("Full", "Not charging"):
+            return 0.0
+        return abs(watts)
+    return None
+
+
+def _read_battery_power_watts_windows():
+    """Potencia de batería (W) vía WMI/ACPI en Windows. None si no hay batería.
+
+    Primero intenta BatteryStatus (root/wmi), que expone ChargeRate/DischargeRate
+    en mW; si no, estima desde Win32_Battery (DesignCapacity / EstimatedRunTime).
+    """
+    try:
+        script_rate = (
+            "$b = Get-CimInstance -Namespace root/wmi -ClassName BatteryStatus | Select-Object -First 1; "
+            "if ($b -and -not $b.PowerOnline -and $b.DischargeRate -gt 0) { [double]$b.DischargeRate } "
+            "elseif ($b -and $b.PowerOnline -and $b.ChargeRate -gt 0) { -([double]$b.ChargeRate) } "
+            "elseif ($b) { 0.0 }"
+        )
         result = subprocess.run(
-            [executable, "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+            ["powershell", "-NoProfile", "-Command", script_rate],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip()) / 1000.0
+
+        script_estimate = (
+            "$bat = Get-CimInstance -ClassName Win32_Battery | Select-Object -First 1; "
+            "if ($bat -and $bat.DesignCapacity -and $bat.EstimatedRunTime -gt 0 -and $bat.EstimatedChargeRemaining -gt 0) { "
+            "  [math]::Round($bat.DesignCapacity * $bat.EstimatedChargeRemaining / 100.0 * 60.0 / ($bat.EstimatedRunTime * 1000.0), 3) "
+            "}"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script_estimate],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
+def _read_battery_power_watts_darwin():
+    """Potencia de batería (W) en macOS leyendo IOKit con ioreg. None si no hay batería.
+
+    Amperage está en mA (positivo al descargar, negativo al cargar) y Voltage en mV.
+    """
+    try:
+        result = subprocess.run(
+            ["ioreg", "-r", "-n", "AppleSmartBattery"],
+            capture_output=True,
+            text=True,
+            timeout=5,
             check=False,
         )
         if result.returncode != 0:
-            return 0.0, 0.0
-
-        line = result.stdout.strip().splitlines()[0]
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) < 2:
-            return 0.0, 0.0
-
-        gpu_util_pct = float(re.search(r"[-+]?\d*\.?\d+", parts[0]).group()) if re.search(r"[-+]?\d*\.?\d+", parts[0]) else 0.0
-        vram_used_mb = float(re.search(r"[-+]?\d*\.?\d+", parts[1]).group()) if re.search(r"[-+]?\d*\.?\d+", parts[1]) else 0.0
-        return gpu_util_pct, vram_used_mb
+            return None
+        amperage_ma = None
+        voltage_mv = None
+        for line in result.stdout.splitlines():
+            match = re.search(r'"Amperage"\s*=\s*(-?\d+)', line)
+            if match:
+                amperage_ma = int(match.group(1))
+                continue
+            match = re.search(r'"Voltage"\s*=\s*(\d+)', line)
+            if match:
+                voltage_mv = int(match.group(1))
+        if amperage_ma is not None and voltage_mv is not None:
+            return (amperage_ma / 1000.0) * (voltage_mv / 1000.0)
     except Exception:
-        return 0.0, 0.0
+        pass
+    return None
+
+
+def get_battery_power_watts():
+    """Devuelve la potencia actual de la batería en watts.
+
+    Positivo = consumo (descarga), negativo = recarga, 0.0 = enchufada sin cambios,
+    None = no disponible (p. ej. PC de escritorio sin batería).
+    El resultado se cachea 1 segundo para no lanzar subprocesos en cada muestra.
+    """
+    now = time.time()
+    cache = _battery_power_cache
+    if now - cache["sampled_at"] <= BATTERY_POWER_CACHE_TTL:
+        return cache["watts"]
+
+    watts = None
+    try:
+        if sys.platform.startswith("linux"):
+            watts = _read_battery_power_watts_linux()
+        elif sys.platform == "darwin":
+            watts = _read_battery_power_watts_darwin()
+        elif sys.platform.startswith("win"):
+            watts = _read_battery_power_watts_windows()
+    except Exception:
+        logger.error("Error al obtener la potencia de la batería", exc_info=True)
+
+    cache["sampled_at"] = now
+    cache["watts"] = watts
+    return watts
 
 
 def _collect_current_metrics():
@@ -147,6 +273,7 @@ def _collect_current_metrics():
         "vram_usage_mb": 0.0,
         "power_watts": current_power_watts,
         "cpu_temp_c": round(get_cpu_temperature(), 2),
+        "battery_power_watts": get_battery_power_watts(),
     }
 
 
@@ -191,6 +318,9 @@ def stop_metrics_monitor(thread, stop_event, metrics_by_device_and_second, devic
     if baseline_ram_mb is not None:
         ram_peak_mb = max(0.0, ram_peak_mb - baseline_ram_mb)
 
+    battery_power_levels = [item["battery_power_watts"] for item in snapshots if item["battery_power_watts"] is not None]
+    battery_power_watts = max(battery_power_levels) if battery_power_levels else None
+
     return {
         "device_name": device_name,
         "metrics_by_device_and_second": metrics_by_device_and_second,
@@ -200,6 +330,7 @@ def stop_metrics_monitor(thread, stop_event, metrics_by_device_and_second, devic
         "vram_usage_mb": max(item["vram_usage_mb"] for item in snapshots),
         "power_watts": max(item["power_watts"] for item in snapshots),
         "cpu_temp_c": max(item["cpu_temp_c"] for item in snapshots),
+        "battery_power_watts": battery_power_watts,
     }
 
 
@@ -472,6 +603,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
             "gpu_usage_pct",
             "power_watts",
             "cpu_temp_c",
+            "battery_power_watts",
             "json_valid",
             "ha_executed",
             "ha_state_valid",
@@ -578,6 +710,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 vram_mb = metrics_snapshot["vram_usage_mb"]
                 power_w = metrics_snapshot["power_watts"]
                 temp_c = metrics_snapshot["cpu_temp_c"]
+                battery_power_watts = metrics_snapshot["battery_power_watts"]
 
                 writer.writerow({
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -595,6 +728,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                     "vram_usage_mb": vram_mb,
                     "power_watts": power_w,
                     "cpu_temp_c": temp_c,
+                    "battery_power_watts": battery_power_watts,
                     "json_valid": json_valid,
                     "ha_executed": ha_executed,
                     "ha_state_valid": ha_state_valid,
@@ -607,6 +741,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 logger.debug("✓ CPU: %s%% | RAM: %s MB", cpu_pct, ram_mb)
                 logger.debug("✓ GPU: %s%% | VRAM: %s MB", gpu_pct, vram_mb)
                 logger.debug("✓ Potencia: %s W | Temp: %s°C", power_w, temp_c)
+                logger.debug("✓ Batería: %s W de consumo", battery_power_watts)
                 logger.info("✓ Tool Calling válido: %s", json_valid)
                 logger.info("✓ Ejecución HA: %s", ha_executed)
                 logger.debug("✓ Respuesta: %s", result["raw_response"][:500])
