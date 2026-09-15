@@ -90,7 +90,9 @@ Shared by `benchmark.py`, `monitor_gpu.py` and `monitor_gpu_lite.py`.
 Backend selection is automatic:
 1. `nvidia-smi` — discrete NVIDIA GPUs (Linux/Windows).
 2. Jetson sysfs — NVIDIA Jetson (Orin Nano, Orin, Xavier, Nano, TX…), read
-   from `/sys/devices/gpu.0/load` (GPU %), `/sys/devices/virtual/thermal`
+   from `/sys/devices/platform/17000000.gpu/load` (GPU %, JetPack 6 / L4T 36,
+   value ÷10 = %; older L4T falls back to `/sys/devices/gpu.0/load`, ÷10000),
+   `/sys/devices/virtual/thermal`
    (temperature), `/sys/class/devfreq/57000000.gpu` (core clock),
    `/proc/meminfo` and `/etc/nv_tegra_release` (L4T version).
 - **VRAM caveat:** Jetson boards have no dedicated VRAM — the GPU shares the

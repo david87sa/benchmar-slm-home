@@ -6,7 +6,9 @@ with ``nvidia-smi``. On NVIDIA Jetson boards (Jetson Orin Nano, Orin,
 Xavier, Nano, TX…) ``nvidia-smi`` is NOT shipped, so the metrics are read
 directly from sysfs, which is the same source ``tegrastats``/``jtop`` use:
 
-* GPU utilization  -> ``/sys/devices/gpu.0/load``  (raw value / 10000 = %)
+* GPU utilization  -> ``/sys/devices/platform/17000000.gpu/load`` on JetPack 6
+                       (raw value / 10 = %); on older L4T (JetPack 5 and earlier)
+                       ``/sys/devices/gpu.0/load`` (raw value / 10000 = %)
 * GPU temperature  -> ``/sys/devices/virtual/thermal/thermal_zone*/type``
                        (the zone whose type matches "GPU", e.g. "GPU-therm")
 * GPU core clock   -> ``/sys/class/devfreq/57000000.gpu/cur_freq`` (Hz -> MHz)
@@ -53,7 +55,15 @@ GPU_QUERY = ",".join(
 )
 
 # --- Jetson (Tegra) sysfs locations ---
-GPU_LOAD_PATH = "/sys/devices/gpu.0/load"
+# JetPack 6 (L4T 36.x, Orin boards, Ubuntu 22.04 and later): the iGPU is exposed
+# as a platform device and its load file already uses a /10 scale
+# (e.g. 450 -> 45.0%).
+GPU_LOAD_PATH = "/sys/devices/platform/17000000.gpu/load"
+GPU_LOAD_SCALE = 10.0
+# Older L4T (JetPack 5 and earlier): /sys/devices/gpu.0/load scaled by 10000
+# (e.g. 375000 -> 37.5%). Kept as a fallback when the platform node is absent.
+GPU_LOAD_PATH_LEGACY = "/sys/devices/gpu.0/load"
+GPU_LOAD_SCALE_LEGACY = 10000.0
 THERMAL_DIR = "/sys/devices/virtual/thermal"
 DEVFREQ_DIR = "/sys/class/devfreq"
 IGPU_FREQ_NODE = "57000000.gpu"
@@ -120,7 +130,7 @@ def is_jetson():
     """Detect an NVIDIA Jetson (Tegra) board from filesystem markers."""
     if not sys.platform.startswith("linux"):
         return False
-    if os.path.exists(GPU_LOAD_PATH):
+    if os.path.exists(GPU_LOAD_PATH) or os.path.exists(GPU_LOAD_PATH_LEGACY):
         return True
     if os.path.exists(L4T_RELEASE_PATH):
         return True
@@ -183,6 +193,9 @@ def get_gpu_metrics_nvidia_smi():
 def _read_meminfo_mb():
     """Return (total_mb, used_mb) from /proc/meminfo, or (None, None).
 
+    Equivalent to psutil.virtual_memory() on Linux: ``total`` maps to
+    ``MemTotal`` and ``available`` to ``MemAvailable`` (the same fields psutil
+    reports as ``.total`` and ``.available``); ``used`` = MemTotal - MemAvailable.
     The Jetson iGPU shares the system LPDDR pool, so this is the closest
     available proxy for GPU memory usage without nvidia-smi.
     """
@@ -274,16 +287,31 @@ def _read_l4t_version():
     return "L4T"
 
 
+def _read_gpu_load_pct():
+    """Return the GPU utilization percentage (0-100) from the Jetson load file.
+
+    JetPack 6 (L4T 36.x) on Jetson Orin exposes the iGPU load at
+    ``/sys/devices/platform/17000000.gpu/load`` with a /10 scale
+    (e.g. 450 -> 45.0%). Older L4T (JetPack 5 and earlier) used
+    ``/sys/devices/gpu.0/load`` with a /10000 scale (e.g. 375000 -> 37.5%).
+    Returns None when neither file is available.
+    """
+    for path, scale in (
+        (GPU_LOAD_PATH, GPU_LOAD_SCALE),
+        (GPU_LOAD_PATH_LEGACY, GPU_LOAD_SCALE_LEGACY),
+    ):
+        raw = _read_int(path)
+        if raw is not None:
+            return max(0.0, min(100.0, raw / scale))
+    return None
+
+
 def get_gpu_metrics_jetson():
     """Return the metrics dict read from Jetson sysfs, or None."""
     if not is_jetson():
         return None
 
-    raw_load = _read_int(GPU_LOAD_PATH)
-    util_gpu = None
-    if raw_load is not None:
-        # Same conversion used by jetson-stats/jtop and tegrastats.
-        util_gpu = max(0.0, min(100.0, raw_load / 10000.0))
+    util_gpu = _read_gpu_load_pct()
 
     mem_total_mb, mem_used_mb = _read_meminfo_mb()
     sm_mhz, mem_clk_mhz = _read_gpu_clocks()

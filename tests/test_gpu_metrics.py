@@ -40,7 +40,10 @@ class GpuMetricsJetsonTests(unittest.TestCase):
         self.fs = FakeSysfs()
         patcher = mock.patch.multiple(
             self.gpu,
-            GPU_LOAD_PATH=str(self.fs.root_path / "sys/devices/gpu.0/load"),
+            GPU_LOAD_PATH=str(
+                self.fs.root_path / "sys/devices/platform/17000000.gpu/load"
+            ),
+            GPU_LOAD_PATH_LEGACY=str(self.fs.root_path / "sys/devices/gpu.0/load"),
             THERMAL_DIR=str(self.fs.root_path / "sys/devices/virtual/thermal"),
             DEVFREQ_DIR=str(self.fs.root_path / "sys/class/devfreq"),
             MEMINFO_PATH=str(self.fs.root_path / "proc/meminfo"),
@@ -61,7 +64,7 @@ class GpuMetricsJetsonTests(unittest.TestCase):
             "MemAvailable:    4125812 kB\n"
             "Buffers:          123456 kB\n"
         ))
-        self.fs.write("sys/devices/gpu.0/load", "375000\n")
+        self.fs.write("sys/devices/platform/17000000.gpu/load", "450\n")
         self.fs.write(
             "sys/devices/virtual/thermal/thermal_zone2/type", "GPU-therm\n"
         )
@@ -79,8 +82,8 @@ class GpuMetricsJetsonTests(unittest.TestCase):
         self._write_default_tree()
         metrics = self.gpu.get_gpu_metrics_jetson()
         self.assertEqual(metrics["backend"], "jetson")
-        # 375000 / 10000 = 37.5
-        self.assertEqual(metrics["util_gpu"], 37.5)
+        # JetPack 6 path: 450 / 10 = 45.0
+        self.assertEqual(metrics["util_gpu"], 45.0)
         # MemTotal 8015564 kB -> MB, used = total - available
         self.assertAlmostEqual(metrics["mem_total_mb"], 8015564 / 1024.0, places=1)
         self.assertAlmostEqual(
@@ -97,17 +100,27 @@ class GpuMetricsJetsonTests(unittest.TestCase):
 
     def test_jetson_missing_sensors(self):
         self._write_default_tree()
-        self.fs.root_path.joinpath("sys/devices/gpu.0/load").unlink()
+        self.fs.root_path.joinpath(
+            "sys/devices/platform/17000000.gpu/load"
+        ).unlink()
         metrics = self.gpu.get_gpu_metrics_jetson()
         self.assertIsNone(metrics["util_gpu"])
         self.assertEqual(metrics["temp_gpu"], 51.0)
 
     def test_jetson_without_thermal_zones(self):
         self.fs.write("proc/meminfo", "MemTotal:        4000000 kB\n")
-        self.fs.write("sys/devices/gpu.0/load", "1000000\n")
+        self.fs.write("sys/devices/platform/17000000.gpu/load", "1000\n")
         metrics = self.gpu.get_gpu_metrics_jetson()
         self.assertEqual(metrics["util_gpu"], 100.0)
         self.assertIsNone(metrics["temp_gpu"])
+
+    def test_jetson_legacy_load_path_fallback(self):
+        # JetPack 5 and earlier L4T expose the load at /sys/devices/gpu.0/load
+        # with a /10000 scale; the reader must fall back to it.
+        self.fs.write("proc/meminfo", "MemTotal:        4000000 kB\n")
+        self.fs.write("sys/devices/gpu.0/load", "375000\n")
+        metrics = self.gpu.get_gpu_metrics_jetson()
+        self.assertEqual(metrics["util_gpu"], 37.5)
 
     def test_jetson_ignores_non_gpu_thermal_zones(self):
         self._write_default_tree()
