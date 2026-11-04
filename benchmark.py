@@ -594,6 +594,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
             "prompt_id",
             "prompt_type",
             "latency_sec",
+            "end_to_end_latency_sec",
             "tokens_generated",
             "tokens_per_second",
             "ram_baseline_mb",
@@ -633,6 +634,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
 
             logger.info("Ejecutando %s: %s", prompt_id, prompt_text)
             t_start = time.time()
+            e2e_start = time.perf_counter()
             try:
                 metrics_thread, metrics_stop_event, metrics_by_device_and_second = start_metrics_monitor(
                     DEVICE_NAME,
@@ -654,39 +656,42 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 ha_executed = False
                 ha_state_valid = "N/A"
 
-                if tool_calls_list:
-                    for tool_call in tool_calls_list:
-                        function = tool_call.get("function", {})
-                        func_name = function.get("name", "")
-                        args = function.get("arguments", {}) or {}
-                        action = {
-                            "turn_on_device": "turn_on",
-                            "turn_off_device": "turn_off",
-                            "lock_device": "lock",
-                            "unlock_device": "unlock",
-                            "set_temperature": "set_value",
-                            "set_device_value": "set_value",
-                            "get_device_state": "get_state",
-                        }.get(func_name, func_name)
-                        dev = args.get("device_id")
-                        param = args.get("parameter") or args.get("temperature") or args.get("value")
+                if json_valid:
+                    if tool_calls_list:
+                        for tool_call in tool_calls_list:
+                            function = tool_call.get("function", {})
+                            func_name = function.get("name", "")
+                            args = function.get("arguments", {}) or {}
+                            action = {
+                                "turn_on_device": "turn_on",
+                                "turn_off_device": "turn_off",
+                                "lock_device": "lock",
+                                "unlock_device": "unlock",
+                                "set_temperature": "set_value",
+                                "set_device_value": "set_value",
+                                "get_device_state": "get_state",
+                            }.get(func_name, func_name)
+                            dev = args.get("device_id")
+                            param = args.get("parameter") or args.get("temperature") or args.get("value")
+                            ok, _ = execute_ha_command({
+                                "status": "success",
+                                "action": action,
+                                "device_id": dev,
+                                "parameter": param,
+                            })
+                            if ok:
+                                ha_executed = True
+                    elif model_status == "success" and model_device not in ("null", "multiple"):
                         ok, _ = execute_ha_command({
-                            "status": "success",
-                            "action": action,
-                            "device_id": dev,
-                            "parameter": param,
+                            "status": model_status,
+                            "action": model_action,
+                            "device_id": model_device,
+                            "parameter": model_param,
                         })
                         if ok:
                             ha_executed = True
-                elif model_status == "success" and model_device not in ("null", "multiple"):
-                    ok, _ = execute_ha_command({
-                        "status": model_status,
-                        "action": model_action,
-                        "device_id": model_device,
-                        "parameter": model_param,
-                    })
-                    if ok:
-                        ha_executed = True
+                else:
+                    logger.info("↷ Se omite ejecución en HA porque json_valid es False para %s", prompt_id)
 
                 if ha_executed:
                     validation_result = validate_single_element(
@@ -697,6 +702,8 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                     )
                     ha_state_valid = validation_result["result"]
                     logger.info("✓ Validación HA: %s", validation_result["message"])
+
+                end_to_end_latency_sec = round(time.perf_counter() - e2e_start, 4)
                 metrics_snapshot = stop_metrics_monitor(
                     metrics_thread,
                     metrics_stop_event,
@@ -719,6 +726,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                     "prompt_id": prompt_id,
                     "prompt_type": prompt_type,
                     "latency_sec": latency_sec,
+                    "end_to_end_latency_sec": end_to_end_latency_sec,
                     "tokens_generated": result["tokens_generated"],
                     "tokens_per_second": result["tokens_per_second"],
                     "ram_baseline_mb": baseline_ram_mb,
