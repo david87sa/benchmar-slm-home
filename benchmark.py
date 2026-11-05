@@ -26,6 +26,7 @@ import gpu_metrics
 from check_ha_states import get_ha_headers, validate_single_element
 from device_info import get_device_name
 from logger import configure_logging, get_logger
+from model_output_validator import validate_model_output
 
 logger = get_logger(__name__)
 
@@ -489,7 +490,11 @@ def call_ollama(prompt_text, system_prompt, tools_definitions):
         "options": {"temperature": 0.0},
     }
 
-    response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
+    try:
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=180)
+    except requests.exceptions.Timeout as exc:
+        raise RuntimeError("Timeout de 180 segundos. No se ha podido completar la acción") from exc
+
     if response.status_code != 200:
         raise RuntimeError(f"Ollama devolvió HTTP {response.status_code}: {response.text}")
 
@@ -649,9 +654,17 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 message_obj = result["message_obj"]
                 is_valid, model_device, model_action, model_param, model_status, tool_calls_list = parse_tool_calls(message_obj)
 
-                device_correct = str(model_device).lower() == str(item["expected_device"]).lower()
-                status_correct = str(model_status).lower() == str(item["expected_status"]).lower()
-                json_valid = is_valid and device_correct and status_correct
+                json_valid, _ = validate_model_output(
+                    item,
+                    {
+                        "is_valid": is_valid,
+                        "model_device": model_device,
+                        "model_action": model_action,
+                        "model_param": model_param,
+                        "model_status": model_status,
+                        "tool_calls_list": tool_calls_list,
+                    },
+                )
 
                 ha_executed = False
                 ha_state_valid = "N/A"
@@ -755,6 +768,53 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 logger.debug("✓ Respuesta: %s", result["raw_response"][:500])
             except Exception as exc:
                 logger.error("✗ Error: %s", exc)
+                latency_sec = round(time.time() - t_start, 4)
+                fallback_metrics = {
+                    "ram_usage_mb": 0.0,
+                    "cpu_usage_pct": 0.0,
+                    "gpu_usage_pct": 0.0,
+                    "vram_usage_mb": 0.0,
+                    "power_watts": 0.0,
+                    "cpu_temp_c": 0.0,
+                    "battery_power_watts": 0.0,
+                }
+                if "metrics_thread" in locals() and metrics_thread is not None:
+                    try:
+                        fallback_metrics = stop_metrics_monitor(
+                            metrics_thread,
+                            metrics_stop_event,
+                            metrics_by_device_and_second,
+                            DEVICE_NAME,
+                            baseline_ram_mb=baseline_ram_mb,
+                        )
+                    except Exception:
+                        pass
+
+                writer.writerow({
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "hardware_device": DEVICE_NAME,
+                    "model_name": MODEL_NAME,
+                    "prompt_id": prompt_id,
+                    "prompt_type": prompt_type,
+                    "latency_sec": latency_sec,
+                    "end_to_end_latency_sec": round(time.perf_counter() - e2e_start, 4),
+                    "tokens_generated": 0,
+                    "tokens_per_second": 0.0,
+                    "ram_baseline_mb": baseline_ram_mb,
+                    "ram_usage_mb": fallback_metrics.get("ram_usage_mb", 0.0),
+                    "cpu_usage_pct": fallback_metrics.get("cpu_usage_pct", 0.0),
+                    "gpu_usage_pct": fallback_metrics.get("gpu_usage_pct", 0.0),
+                    "vram_usage_mb": fallback_metrics.get("vram_usage_mb", 0.0),
+                    "power_watts": fallback_metrics.get("power_watts", 0.0),
+                    "cpu_temp_c": fallback_metrics.get("cpu_temp_c", 0.0),
+                    "battery_power_watts": fallback_metrics.get("battery_power_watts", 0.0),
+                    "json_valid": False,
+                    "ha_executed": False,
+                    "ha_state_valid": "N/A",
+                    "model_reasoning": "",
+                    "raw_response": str(exc),
+                })
+                csv_file.flush()
                 
             time.sleep(2)
 
@@ -763,4 +823,11 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
 if __name__ == "__main__":
     args = parse_args()
     configure_logging(cli_level=args.log_level)
-    run_benchmark(model_name=args.model, device_name=args.device_name, prompt_id=args.prompt_id)
+    try:
+        run_benchmark(model_name=args.model, device_name=args.device_name, prompt_id=args.prompt_id)
+    finally:
+        try:
+            subprocess.run(["ollama", "stop", args.model], check=False, capture_output=True, text=True)
+            logger.info("Modelo %s detenido con ollama stop.", args.model)
+        except Exception as exc:
+            logger.warning("No se pudo detener el modelo %s con ollama stop: %s", args.model, exc)
