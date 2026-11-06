@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "minor_version": 5,
+  "key": "core.config_entries",
+  "data": {
+    "entries": [
+      {"created_at":"2026-08-04T02:36:15.158165+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"sun","entry_id":"01KZ5A1YDPT9C6A8V7YBEPQYKJ","minor_version":1,"modified_at":"2026-08-04T02:36:15.158168+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"import","subentries":[],"title":"Sun","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:36:15.406315+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"demo","entry_id":"01KZ5A1YNEKDBHE7V61KVCN2KD","minor_version":1,"modified_at":"2026-08-04T02:36:15.406318+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"import","subentries":[],"title":"Demo","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:36:15.996123+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"analytics","entry_id":"01KZ5A1Z7W1VC94JNQQSJQ52DW","minor_version":1,"modified_at":"2026-08-04T02:36:15.996127+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"system","subentries":[],"title":"Analytics","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:36:15.996419+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"go2rtc","entry_id":"01KZ5A1Z7WVR9ZMBEEHH804NE6","minor_version":1,"modified_at":"2026-08-04T02:36:15.996420+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"system","subentries":[],"title":"go2rtc","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:36:16.015228+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"backup","entry_id":"01KZ5A1Z8FMJJSY92VWEB59RVH","minor_version":1,"modified_at":"2026-08-04T02:36:16.015229+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"system","subentries":[],"title":"Backup","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:37:02.229644+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"shopping_list","entry_id":"01KZ5A3CCN75VCWAZEP26M2YCC","minor_version":1,"modified_at":"2026-08-04T02:37:02.229649+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Shopping list","unique_id":"shopping_list","version":1},
+      {"created_at":"2026-08-04T02:37:02.408697+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"radio_browser","entry_id":"01KZ5A3CJ861GPTFA38FES76WH","minor_version":1,"modified_at":"2026-08-04T02:37:02.408702+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Radio Browser","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:37:02.474024+00:00","data":{"track_home":true},"disabled_by":null,"discovery_keys":{},"domain":"met","entry_id":"01KZ5A3CM9ESEM8YCC4YXMZ5F9","minor_version":1,"modified_at":"2026-08-04T02:37:02.474028+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Home","unique_id":null,"version":1},
+      {"created_at":"2026-08-04T02:37:02.505601+00:00","data":{"language":"en","tld":"com"},"disabled_by":null,"discovery_keys":{},"domain":"google_translate","entry_id":"01KZ5A3CN9X9YSPSHZCE8DKSS0","minor_version":1,"modified_at":"2026-08-04T02:37:02.505604+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"onboarding","subentries":[],"title":"Google Translate text-to-speech","unique_id":null,"version":1}
+    ]
+  }
+}

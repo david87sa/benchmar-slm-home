@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "minor_version": 1,
+  "key": "person",
+  "data": {
+    "items": [
+      {
+        "id": "david_salas_aguilar",
+        "name": "David Salas Aguilar",
+        "user_id": "0dbdaca55b5b489d99ddd74699fe1677",
+        "device_trackers": []
+      }
+    ]
+  }
+}
