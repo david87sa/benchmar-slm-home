@@ -404,6 +404,23 @@ def execute_ha_command(parsed_cmd, ha_url=HA_API_URL, api_password=HA_API_PASSWO
 
 
 # --- Ollama interaction ---
+def should_execute_home_assistant(json_valid, model_status, tool_calls_list=None):
+    if not json_valid:
+        return False
+    if str(model_status or "").lower() == "indeterminado":
+        return False
+    return True
+
+
+def format_csv_output(value, model_status=None, ha_executed=False):
+    if str(model_status or "").lower() == "indeterminado":
+        if value is False:
+            return "N/A"
+        if value in (None, "False", "false"):
+            return "N/A"
+    return value
+
+
 def parse_tool_calls(message_obj):
     tool_calls = message_obj.get("tool_calls", [])
     action_map = {
@@ -472,7 +489,7 @@ def parse_tool_calls(message_obj):
             device_id = args.get("device_id", "null")
             parameter = args.get("parameter") or args.get("temperature") or args.get("value")
             action = action_map.get(func_name, func_name)
-            return True, device_id, action, parameter, "success", inline_calls
+            return True, device_id, action, parameter, "success", []
 
         # Plain-text status responses: model returns "indeterminado" or "fallo"
         # when the prompt is ambiguous, out-of-domain, or has no valid device.
@@ -706,8 +723,11 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
 
                 ha_executed = False
                 ha_state_valid = "N/A"
+                is_indeterminate_response = str(model_status or "").lower() == "indeterminado"
 
-                if json_valid:
+                if is_indeterminate_response:
+                    logger.info("↷ Respuesta indeterminada para %s; se reporta HA como N/A y no se ejecuta.", prompt_id)
+                elif json_valid:
                     if tool_calls_list:
                         for tool_call in tool_calls_list:
                             function = tool_call.get("function", {})
@@ -788,9 +808,9 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                     "power_watts": power_w,
                     "cpu_temp_c": temp_c,
                     "battery_power_watts": battery_power_watts,
-                    "json_valid": json_valid,
-                    "ha_executed": ha_executed,
-                    "ha_state_valid": ha_state_valid,
+                    "json_valid": format_csv_output(json_valid, model_status=model_status),
+                    "ha_executed": format_csv_output(ha_executed, model_status=model_status, ha_executed=ha_executed),
+                    "ha_state_valid": format_csv_output(ha_state_valid, model_status=model_status, ha_executed=ha_executed),
                     "model_reasoning": result["model_reasoning"].replace("\n", " ") if result["model_reasoning"] else "",
                     "raw_response": result["raw_response"].replace("\n", " "),
                 })
