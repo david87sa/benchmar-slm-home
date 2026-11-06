@@ -1,3 +1,0 @@
-2026-11-06 09:10:04.960 WARNING (Recorder) [homeassistant.components.recorder.util] The system could not validate that the sqlite3 database at //config/home-assistant_v2.db was shutdown cleanly
-2026-11-06 09:10:05.140 WARNING (Recorder) [homeassistant.components.recorder.util] Ended unfinished session (id=8 from 2026-11-05 00:05:15.147335)
-2026-11-06 09:10:07.750 WARNING (MainThread) [homeassistant.components.device_tracker.legacy] The legacy device tracker platform demo.device_tracker is being set up; legacy device trackers are deprecated and will be removed in Home Assistant Core 2027.5, please migrate to an integration which uses a modern config entry based device tracker

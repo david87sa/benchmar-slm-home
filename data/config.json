@@ -1,7 +1,7 @@
 {
   "model_name": "qwen2.5:1.5b",
   "ha_url": "http://localhost:8123",
-  "mqtt_broker": "192.168.2.167",
+  "mqtt_broker": "192.168.2.168",
   "mqtt_topic_power": "tele/tasmota_EA611B/SENSOR",
   "ha_api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI3ODY2MTc0YzNjMmY0OGQwYTliNTAwNDE4M2VmMzFmMCIsImlhdCI6MTc4NTgxMTA5NSwiZXhwIjoyMTAxMTcxMDk1fQ.giPHhsQ-6PRZWoj4_6e0N_DR1AT9JaVT6Z1ehQgBvQc",
   "log_level": "info"
