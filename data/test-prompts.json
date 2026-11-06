@@ -13,7 +13,7 @@
         "type": "Simple Direct",
         "prompt": "Bloquea el llavín inteligente.",
         "expected_device": "lock.llavin_inteligente",
-        "expected_action": "lock",
+        "expected_action": "lock_device",
         "expected_parameter": "null",
         "expected_status": "success"
     },
@@ -58,7 +58,7 @@
         "type": "Implicit / Synonym",
         "prompt": "Abre el llavín inteligente.",
         "expected_device": "lock.llavin_inteligente",
-        "expected_action": "unlock",
+        "expected_action": "unlock_device",
         "expected_parameter": "null",
         "expected_status": "success"
     },
@@ -68,7 +68,7 @@
         "prompt": "Tengo mucho frío en la casa, ajusta el termostato.",
         "expected_device": "climate.termostato_del_hogar",
         "expected_action": "set_value",
-        "expected_parameter": "null",
+        "expected_parameter": "regex:^\\d+(\\.\\d+)?$",
         "expected_status": "success"
     },
     {
