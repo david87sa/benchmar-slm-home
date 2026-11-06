@@ -412,9 +412,30 @@ def parse_tool_calls(message_obj):
         "lock_device": "lock",
         "unlock_device": "unlock",
         "set_temperature": "set_value",
+        "set_temperature_device": "set_value",
         "set_device_value": "set_value",
         "get_device_state": "get_state",
     }
+
+    def _parse_inline_function_calls(content):
+        pattern = r"(\w+)\s*\(\s*(\{.*?\})\s*\)"
+        matches = re.finditer(pattern, content, re.DOTALL)
+        parsed_calls = []
+        for match in matches:
+            func_name = match.group(1)
+            args_text = match.group(2)
+            try:
+                args = json.loads(args_text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(args, dict):
+                parsed_calls.append({
+                    "function": {
+                        "name": func_name,
+                        "arguments": args,
+                    }
+                })
+        return parsed_calls
 
     def _coerce_arguments(args):
         if isinstance(args, str):
@@ -441,19 +462,17 @@ def parse_tool_calls(message_obj):
         except json.JSONDecodeError:
             pass
 
-        function_call_match = re.match(r"^(\w+)\s*\(\s*(\{.*\})\s*\)$", content, re.DOTALL)
-        if function_call_match:
-            func_name = function_call_match.group(1)
-            args_text = function_call_match.group(2)
-            try:
-                args = json.loads(args_text)
-            except json.JSONDecodeError:
-                args = {}
-            if isinstance(args, dict):
-                device_id = args.get("device_id", "null")
-                parameter = args.get("parameter") or args.get("temperature") or args.get("value")
-                action = action_map.get(func_name, func_name)
-                return True, device_id, action, parameter, "success", []
+        inline_calls = _parse_inline_function_calls(content)
+        if inline_calls:
+            if len(inline_calls) > 1:
+                return True, "multiple", "multiple", None, "success", inline_calls
+
+            func_name = inline_calls[0]["function"]["name"]
+            args = inline_calls[0]["function"]["arguments"]
+            device_id = args.get("device_id", "null")
+            parameter = args.get("parameter") or args.get("temperature") or args.get("value")
+            action = action_map.get(func_name, func_name)
+            return True, device_id, action, parameter, "success", inline_calls
 
         # Plain-text status responses: model returns "indeterminado" or "fallo"
         # when the prompt is ambiguous, out-of-domain, or has no valid device.
@@ -654,7 +673,7 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                 message_obj = result["message_obj"]
                 is_valid, model_device, model_action, model_param, model_status, tool_calls_list = parse_tool_calls(message_obj)
 
-                json_valid, _ = validate_model_output(
+                validation_result, validation_details = validate_model_output(
                     item,
                     {
                         "is_valid": is_valid,
@@ -665,6 +684,25 @@ def run_benchmark(model_name=None, device_name=None, prompt_id=None):
                         "tool_calls_list": tool_calls_list,
                     },
                 )
+                json_valid = validation_result
+
+                if not json_valid:
+                    logger.warning(
+                        "json_valid=False para %s | tipo=%s | expected_device=%s | expected_action=%s | expected_parameter=%s | expected_status=%s | is_valid=%s | device=%s | action=%s | param=%s | status=%s | tool_calls=%s | rule=%s",
+                        prompt_id,
+                        prompt_type,
+                        item.get("expected_device"),
+                        item.get("expected_action"),
+                        item.get("expected_parameter"),
+                        item.get("expected_status"),
+                        is_valid,
+                        model_device,
+                        model_action,
+                        model_param,
+                        model_status,
+                        len(tool_calls_list),
+                        validation_details.get("rule", "unknown"),
+                    )
 
                 ha_executed = False
                 ha_state_valid = "N/A"

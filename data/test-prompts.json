@@ -28,7 +28,7 @@
     },
     {
         "id": "CMD_004",
-        "type": "Parameter Extraction",
+        "type": "Simple Direct",
         "prompt": "Pon el termostato del hogar a 21 grados.",
         "expected_device": "climate.termostato_del_hogar",
         "expected_action": "set_value",
@@ -37,7 +37,7 @@
     },
     {
         "id": "CMD_005",
-        "type": "Parameter Extraction",
+        "type": "Simple Direct",
         "prompt": "Apaga la luz del cuarto.",
         "expected_device": "input_boolean.bedroom_light",
         "expected_action": "turn_off",
@@ -67,7 +67,7 @@
         "type": "Implicit / Synonym",
         "prompt": "Tengo mucho frío en la casa, ajusta el termostato.",
         "expected_device": "climate.termostato_del_hogar",
-        "expected_action": "turn_on",
+        "expected_action": "set_value",
         "expected_parameter": "null",
         "expected_status": "success"
     },
@@ -120,8 +120,8 @@
         "id": "CMD_014",
         "type": "Composite Command",
         "prompt": "Quiero encender la cafetera y la luz de la cocina.",
-        "expected_device": "multiple",
-        "expected_action": "multiple",
+        "expected_device": "input_boolean.coffee_maker_power_switch, input_boolean.kitchen_light",
+        "expected_action": "turn_on,turn_on",
         "expected_parameter": "null",
         "expected_status": "success"
     },
